@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sk8 3D</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+  #hud {
+    position: absolute; top: 12px; left: 12px; color: #fff;
+    text-shadow: 2px 2px 0 #000; font-size: 18px; z-index: 10;
+    line-height: 1.5;
+  }
+  #score { font-size: 32px; color: #ffcc00; }
+  #combo { font-size: 22px; color: #ff66cc; min-height: 28px; }
+  #trick { font-size: 28px; color: #66ffcc; min-height: 32px;
+    text-transform: uppercase; letter-spacing: 2px; }
+  #help {
+    position: absolute; bottom: 12px; left: 12px; color: #fff;
+    text-shadow: 1px 1px 0 #000; font-size: 13px; z-index: 10;
+    background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px;
+    line-height: 1.6;
+  }
+  #speedbar {
+    position: absolute; bottom: 36px; right: 12px; width: 180px; height: 20px;
+    border: 2px solid #fff; background: rgba(0,0,0,0.4); z-index: 10;
+  }
+  #speedfill { height: 100%; width: 0%; background: linear-gradient(90deg, #00ff88, #ffcc00, #ff3366); transition: width 0.1s; }
+  #speedlabel { position: absolute; bottom: 12px; right: 12px; color: #fff;
+    text-shadow: 1px 1px 0 #000; font-size: 13px; z-index: 10; }
+  #editorBtn {
+    position: absolute; top: 12px; right: 12px; z-index: 11;
+    background: rgba(0,0,0,0.6); color: #fff; border: 2px solid #fff;
+    padding: 8px 16px; font-family: inherit; font-size: 14px;
+    cursor: pointer; letter-spacing: 2px;
+  }
+  #editorBtn:hover { background: rgba(255,200,0,0.7); color: #000; }
+  #editorPanel {
+    position: absolute; top: 60px; right: 12px; z-index: 12;
+    background: rgba(0,0,0,0.85); border: 2px solid #fff;
+    padding: 14px; color: #fff; width: 220px; display: none;
+  }
+  #editorPanel .ptitle { font-size: 16px; margin-bottom: 10px; color: #ffcc00; letter-spacing: 2px; }
+  #editorPanel .tools { display: flex; gap: 4px; margin-bottom: 10px; }
+  #editorPanel .tools button {
+    flex: 1; background: rgba(0,0,0,0.4); color: #fff;
+    border: 1px solid #888; padding: 8px 4px; cursor: pointer;
+    font-family: inherit; font-size: 13px;
+  }
+  #editorPanel .tools button.active {
+    background: #66ffcc; color: #000; border-color: #66ffcc; font-weight: bold;
+  }
+  #editorPanel .hint { font-size: 11px; line-height: 1.7; margin-bottom: 10px; color: #bbb; }
+  #editorPanel .hint b { color: #ffcc00; }
+  #editorRotLabel { font-size: 12px; color: #66ffcc; margin-bottom: 10px; }
+  #editorDone {
+    width: 100%; background: #ff3366; color: #fff; border: none;
+    padding: 10px; cursor: pointer; font-family: inherit; font-size: 14px;
+    letter-spacing: 2px;
+  }
+  #editorDone:hover { background: #ff5588; }
+  body.editing #help, body.editing #combo, body.editing #trick { display: none; }
+  body.editing { cursor: crosshair; }
+  #title {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: #fff; font-size: 60px; text-align: center; z-index: 20;
+    text-shadow: 4px 4px 0 #ff3366, 8px 8px 0 #000;
+    cursor: pointer; user-select: none;
+  }
+  #title small { display: block; font-size: 20px; margin-top: 20px; color: #66ffcc; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>SCORE: <span id="score">0</span></div>
+  <div id="combo"></div>
+  <div id="trick"></div>
+</div>
+<div id="speedbar"><div id="speedfill"></div></div>
+<div id="speedlabel">SPEED</div>
+<button id="editorBtn">EDIT LEVEL</button>
+<div id="editorPanel">
+  <div class="ptitle">LEVEL EDITOR</div>
+  <div class="tools">
+    <button data-tool="rail" class="active">RAIL</button>
+    <button data-tool="ramp">RAMP</button>
+    <button data-tool="tree">TREE</button>
+  </div>
+  <div id="editorRotLabel">Rotation: 0°</div>
+  <div class="hint">
+    <b>Click</b> ground to place<br>
+    <b>Wheel</b> — rotate object<br>
+    <b>WASD</b> — pan camera<br>
+    <b>Z</b> — undo last<br>
+    <b>ESC</b> — close editor
+  </div>
+  <button id="editorDone">DONE</button>
+</div>
+<div id="help">
+  WASD / Arrows — Steer &amp; Push<br>
+  SPACE — Ollie (hold) &nbsp; SHIFT+SPACE — Nollie<br>
+  J — Kickflip &nbsp; K — Heelflip &nbsp; L — Shuv<br>
+  J+L = Tre Flip &nbsp; K+L = Varial Heel<br>
+  Q / E — Spin in the air<br>
+  U / I / O / P — Grab (Indy / Mute / Melon / Stalefish)<br>
+  M — Manual (on the ground)<br>
+  Approach a rail in the air to grind — straight on = 50-50, sideways = boardslide
+</div>
+<div id="title">SK8 3D<small>click to start</small></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ============================================================
+// SCENE SETUP
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 80, 240);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 500);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+// LIGHTS
+// ============================================================
+const hemi = new THREE.HemisphereLight(0xffffff, 0x445566, 0.7);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xffffee, 1.0);
+sun.position.set(40, 80, 30);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -100;
+sun.shadow.camera.right = 100;
+sun.shadow.camera.top = 100;
+sun.shadow.camera.bottom = -100;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 200;
+scene.add(sun);
+
+// ============================================================
+// GROUND / SKATEPARK
+// ============================================================
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// painted lines on the ground for stylized skatepark look
+function addGroundStripe(x, z, w, l, color = 0xffff00) {
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(w, l),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, 0.02, z);
+  scene.add(m);
+}
+for (let i = -180; i <= 180; i += 40) {
+  addGroundStripe(i, 0, 0.5, 400, 0xffffff);
+}
+
+// Obstacles list — each is { mesh, type, bounds, ... }
+const obstacles = [];
+
+function makeBox(w, h, d, color, x, y, z) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
+  );
+  m.position.set(x, y + h/2, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+
+// === BOXES (grindable / landable tops) ===
+function addBox(w, h, d, x, z, color = 0xcc8855) {
+  const m = makeBox(w, h, d, color, x, 0, z);
+  obstacles.push({
+    mesh: m, type: 'box',
+    minX: x - w/2, maxX: x + w/2,
+    minZ: z - d/2, maxZ: z + d/2,
+    top: h
+  });
+  return m;
+}
+
+addBox(8, 1.2, 24, -25, 0, 0xddaa77);
+addBox(10, 2.0, 10, 30, 0, 0xddaa77);
+addBox(6, 0.8, 30, 0, 40, 0xccaa88);
+addBox(4, 1.5, 4, 50, -30, 0xddaa77);
+addBox(4, 1.5, 4, -50, -30, 0xddaa77);
+
+// === RAMPS (quarter-pipe-ish wedges) ===
+function addRamp(w, h, d, x, z, rotY = 0, color = 0xaaaaff) {
+  // wedge: a triangular prism
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(d, 0);
+  shape.lineTo(d, h);
+  shape.lineTo(0, 0);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
+  geo.translate(-d/2, 0, -w/2);
+  geo.rotateY(rotY);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+  m.position.set(x, 0, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+  obstacles.push({
+    mesh: m, type: 'ramp',
+    x, z, w, h, d, rotY
+  });
+  return [m];
+}
+
+addRamp(16, 4, 8, 0, -30, 0, 0xaaccff);     // facing +z (launches +z dir)
+addRamp(16, 4, 8, 0, 30, Math.PI, 0xaaccff); // facing -z
+addRamp(8, 3, 6, -60, 20, Math.PI/2, 0xffaacc);
+addRamp(8, 3, 6, 60, 20, -Math.PI/2, 0xffaacc);
+
+// === RAILS ===
+function addRail(length, x, z, rotY = 0) {
+  const meshes = [];
+  const railH = 1.0;
+  const geo = new THREE.CylinderGeometry(0.12, 0.12, length, 8);
+  geo.rotateZ(Math.PI/2);
+  geo.rotateY(rotY);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2 }));
+  m.position.set(x, railH, z);
+  m.castShadow = true;
+  scene.add(m);
+  meshes.push(m);
+
+  // supports
+  const supportGeo = new THREE.CylinderGeometry(0.08, 0.08, railH, 6);
+  const supportMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+  for (let t = -length/2 + 1; t <= length/2 - 1; t += (length - 2) / 3) {
+    const s = new THREE.Mesh(supportGeo, supportMat);
+    s.position.set(
+      x + Math.cos(rotY) * t,
+      railH/2,
+      z - Math.sin(rotY) * t
+    );
+    scene.add(s);
+    meshes.push(s);
+  }
+
+  // rail axis direction
+  const dx = Math.cos(rotY);
+  const dz = -Math.sin(rotY);
+  obstacles.push({
+    mesh: m, type: 'rail',
+    x, z, length, rotY, dx, dz,
+    height: railH
+  });
+  return meshes;
+}
+
+// Easy perpendicular rail right in front of spawn — natural boardslide opportunity
+addRail(18, 0, -45, 0);
+// Two long parallel rails flanking the front ramp — ollie up + 50-50 grind toward the park
+addRail(20, -10, -30, Math.PI/2);
+addRail(20,  10, -30, Math.PI/2);
+// Perpendicular rail in the back half
+addRail(14, 0, 15, 0);
+// Diagonal rails by the side ramps
+addRail(12, -35, 45, Math.PI/4);
+addRail(12, 35, 45, -Math.PI/4);
+
+// === DECORATIVE: palm trees ===
+function addTree(x, z) {
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.4, 0.5, 6, 8),
+    new THREE.MeshStandardMaterial({ color: 0x664422 })
+  );
+  trunk.position.set(x, 3, z);
+  trunk.castShadow = true;
+  scene.add(trunk);
+  const leaves = new THREE.Mesh(
+    new THREE.SphereGeometry(2.5, 8, 6),
+    new THREE.MeshStandardMaterial({ color: 0x33aa44 })
+  );
+  leaves.position.set(x, 7, z);
+  leaves.castShadow = true;
+  scene.add(leaves);
+  return [trunk, leaves];
+}
+for (let i = 0; i < 30; i++) {
+  const angle = (i / 30) * Math.PI * 2;
+  const r = 90 + Math.random() * 40;
+  addTree(Math.cos(angle) * r, Math.sin(angle) * r);
+}
+
+// === BUILDINGS in the distance ===
+for (let i = 0; i < 20; i++) {
+  const angle = (i / 20) * Math.PI * 2;
+  const r = 140 + Math.random() * 30;
+  const h = 8 + Math.random() * 30;
+  const w = 6 + Math.random() * 8;
+  const b = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, w),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(Math.random(), 0.3, 0.6) })
+  );
+  b.position.set(Math.cos(angle) * r, h/2, Math.sin(angle) * r);
+  b.castShadow = true;
+  scene.add(b);
+}
+
+// ============================================================
+// SKATER + BOARD
+// ============================================================
+const skater = new THREE.Group();
+scene.add(skater);
+
+// The board
+const boardGroup = new THREE.Group();
+const boardDeck = new THREE.Mesh(
+  new THREE.BoxGeometry(0.6, 0.08, 2.2),
+  new THREE.MeshStandardMaterial({ color: 0x6633cc })
+);
+boardDeck.castShadow = true;
+boardGroup.add(boardDeck);
+
+// trucks + wheels
+const wheelMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+const wheelGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.1, 12);
+wheelGeo.rotateZ(Math.PI/2);
+[[-0.25, -0.05, -0.85], [0.25, -0.05, -0.85], [-0.25, -0.05, 0.85], [0.25, -0.05, 0.85]].forEach(([x,y,z]) => {
+  const w = new THREE.Mesh(wheelGeo, wheelMat);
+  w.position.set(x, y, z);
+  boardGroup.add(w);
+});
+skater.add(boardGroup);
+
+// The character — chunky low-poly dude
+const charGroup = new THREE.Group();
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+const shirtMat = new THREE.MeshStandardMaterial({ color: 0xff3366 });
+const pantsMat = new THREE.MeshStandardMaterial({ color: 0x333366 });
+const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+const hatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), shirtMat);
+torso.position.y = 0.9; torso.castShadow = true;
+charGroup.add(torso);
+
+const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), skinMat);
+head.position.y = 1.4; head.castShadow = true;
+charGroup.add(head);
+
+const hat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.4), hatMat);
+hat.position.y = 1.62; hat.castShadow = true;
+charGroup.add(hat);
+const brim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.15), hatMat);
+brim.position.set(0, 1.55, 0.22); brim.castShadow = true;
+charGroup.add(brim);
+
+const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 0.2), pantsMat);
+legL.position.set(-0.12, 0.35, 0); legL.castShadow = true;
+charGroup.add(legL);
+const legR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 0.2), pantsMat);
+legR.position.set(0.12, 0.35, 0); legR.castShadow = true;
+charGroup.add(legR);
+
+const shoeL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.35), shoeMat);
+shoeL.position.set(-0.12, 0.08, 0.05); shoeL.castShadow = true;
+charGroup.add(shoeL);
+const shoeR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.35), shoeMat);
+shoeR.position.set(0.12, 0.08, 0.05); shoeR.castShadow = true;
+charGroup.add(shoeR);
+
+const armL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 0.2), shirtMat);
+armL.position.set(-0.35, 0.9, 0); armL.castShadow = true;
+charGroup.add(armL);
+const armR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 0.2), shirtMat);
+armR.position.set(0.35, 0.9, 0); armR.castShadow = true;
+charGroup.add(armR);
+
+skater.add(charGroup);
+
+// ============================================================
+// PHYSICS STATE
+// ============================================================
+const state = {
+  pos: new THREE.Vector3(0, 0.16, -60),
+  vel: new THREE.Vector3(0, 0, 0),
+  heading: 0,          // facing direction (radians)
+  speed: 0,            // forward speed
+  airborne: false,
+  groundY: 0.16,       // top of whatever we're standing on + board thickness
+  jumpCharge: 0,
+  // trick / spin state
+  airSpin: 0,          // accumulated yaw spin in air
+  airSpinSpeed: 0,
+  boardFlip: 0,        // rotation around board's long axis (kickflip / heelflip)
+  boardFlipSpeed: 0,
+  boardShuv: 0,        // rotation around vertical (shuv-it)
+  boardShuvSpeed: 0,
+  currentTrick: null,  // string of current air trick
+  trickTimer: 0,
+  // grinding
+  grinding: false,
+  grindObstacle: null,
+  grindTime: 0,
+  grindType: '50-50 GRIND',  // '50-50 GRIND' or 'BOARDSLIDE'
+  grindDir: 1,                // +1 or -1 along the rail axis
+  // manual
+  manualing: false,
+  manualTime: 0,
+  // grab
+  grab: null,                 // 'INDY' | 'MUTE' | 'MELON' | 'STALEFISH'
+  grabTime: 0,
+  // score
+  score: 0,
+  combo: 0,
+  comboValue: 0,
+  comboTimer: 0,
+};
+
+const MAX_SPEED = 0.6;
+const GRAVITY = -0.025;
+const PUSH_ACCEL = 0.012;
+const TURN_SPEED = 0.045;
+const FRICTION = 0.992;
+const AIR_FRICTION = 0.999;
+const JUMP_BASE = 0.32;
+const JUMP_CHARGE_MAX = 0.25;
+
+// ============================================================
+// INPUT
+// ============================================================
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+// ============================================================
+// HUD
+// ============================================================
+const scoreEl = document.getElementById('score');
+const comboEl = document.getElementById('combo');
+const trickEl = document.getElementById('trick');
+const speedFillEl = document.getElementById('speedfill');
+const titleEl = document.getElementById('title');
+
+let started = false;
+titleEl.addEventListener('click', () => {
+  titleEl.style.display = 'none';
+  started = true;
+});
+window.addEventListener('keydown', (e) => {
+  if (!started && (e.code === 'Space' || e.code === 'Enter')) {
+    titleEl.style.display = 'none';
+    started = true;
+  }
+});
+
+function showTrick(name) {
+  trickEl.textContent = name;
+  state.trickTimer = 60;
+}
+
+function addScore(points, trickName) {
+  state.comboValue += points;
+  state.combo += 1;
+  state.comboTimer = 90;
+  if (trickName) showTrick(trickName + ' +' + points);
+  comboEl.textContent = state.combo > 1 ? state.combo + 'x COMBO  (' + state.comboValue + ')' : '';
+}
+
+function finishCombo() {
+  if (state.combo > 0) {
+    const multiplier = 1 + (state.combo - 1) * 0.5;
+    const final = Math.floor(state.comboValue * multiplier);
+    state.score += final;
+    scoreEl.textContent = state.score;
+    if (state.combo > 1) {
+      showTrick('COMBO! ' + state.combo + 'x = ' + final);
+    }
+  }
+  state.combo = 0;
+  state.comboValue = 0;
+  state.comboTimer = 0;
+  comboEl.textContent = '';
+}
+
+// ============================================================
+// COLLISION HELPERS
+// ============================================================
+function getHeightAt(x, z) {
+  // returns the highest surface beneath (x,z), or 0 (ground)
+  let best = 0;
+  let bestObs = null;
+  for (const o of obstacles) {
+    if (o.type === 'box') {
+      if (x > o.minX && x < o.maxX && z > o.minZ && z < o.maxZ) {
+        if (o.top > best) { best = o.top; bestObs = o; }
+      }
+    } else if (o.type === 'ramp') {
+      // ramp local coords
+      const lx = x - o.x;
+      const lz = z - o.z;
+      // unrotate
+      const cs = Math.cos(-o.rotY), sn = Math.sin(-o.rotY);
+      const rx = lx * cs - lz * sn;
+      const rz = lx * sn + lz * cs;
+      // ramp occupies: rz in [-w/2, w/2], rx in [-d/2, d/2]
+      // height at rx: (rx + d/2)/d * h  — slope rising along +x in local space
+      if (Math.abs(rz) < o.w/2 && rx > -o.d/2 && rx < o.d/2) {
+        const t = (rx + o.d/2) / o.d;
+        const h = t * o.h;
+        if (h > best) { best = h; bestObs = o; }
+      }
+    }
+  }
+  return { h: best, obs: bestObs };
+}
+
+function railProximity(x, y, z, o, hTol = 1.0, vTol = 0.7) {
+  const lx = x - o.x;
+  const lz = z - o.z;
+  const t = lx * o.dx + lz * o.dz;
+  if (Math.abs(t) > o.length / 2) return null;
+  const px = o.x + o.dx * t;
+  const pz = o.z + o.dz * t;
+  const ddx = x - px;
+  const ddz = z - pz;
+  const distH = Math.sqrt(ddx*ddx + ddz*ddz);
+  const distV = Math.abs(y - o.height);
+  if (distH < hTol && distV < vTol) {
+    return { obs: o, t, px, pz, distH, distV };
+  }
+  return null;
+}
+
+function nearestRail(x, y, z) {
+  let best = null;
+  let bestScore = Infinity;
+  for (const o of obstacles) {
+    if (o.type !== 'rail') continue;
+    const r = railProximity(x, y, z, o);
+    if (r) {
+      const s = r.distH + r.distV;
+      if (s < bestScore) { bestScore = s; best = r; }
+    }
+  }
+  return best;
+}
+
+// ============================================================
+// PARTICLES (for landing / grinding sparks)
+// ============================================================
+const particles = [];
+function spawnParticle(x, y, z, color = 0xffaa00, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const p = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.08, 0.08),
+      new THREE.MeshBasicMaterial({ color })
+    );
+    p.position.set(x, y, z);
+    p.userData.vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.4,
+      Math.random() * 0.3,
+      (Math.random() - 0.5) * 0.4
+    );
+    p.userData.life = 30;
+    scene.add(p);
+    particles.push(p);
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.position.add(p.userData.vel);
+    p.userData.vel.y += GRAVITY * 0.5;
+    p.userData.life--;
+    p.scale.setScalar(Math.max(0.1, p.userData.life / 30));
+    if (p.userData.life <= 0) {
+      scene.remove(p);
+      particles.splice(i, 1);
+    }
+  }
+}
+
+// ============================================================
+// CAMERA
+// ============================================================
+const camOffset = new THREE.Vector3(0, 4, -8);
+const camTarget = new THREE.Vector3();
+camera.position.set(0, 10, -75);
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let pushAnim = 0; // 0..1 leg-pushing animation
+let wheelSpin = 0;
+
+function update() {
+  if (editorMode) {
+    handleEditorInput();
+  } else if (!started) {
+    // gentle showcase rotation
+    state.heading += 0.005;
+    state.pos.set(0, 0.16, -60);
+  } else {
+    handleInput();
+    physics();
+    handleTricks();
+    updateCombo();
+  }
+  updateSkaterMesh();
+  if (editorMode) {
+    updateEditorCamera();
+    updateGhost();
+  } else {
+    updateCamera();
+    updateRailHighlights();
+  }
+  updateParticles();
+  updateHUD();
+}
+
+function updateRailHighlights() {
+  for (const o of obstacles) {
+    if (o.type !== 'rail') continue;
+    // Wider lookup just for highlighting so you can see the catch zone before you commit
+    const near = railProximity(state.pos.x, state.pos.y, state.pos.z, o, 2.5, 2.2);
+    o.mesh.material.emissive.setHex(near ? 0xffaa00 : 0x000000);
+    o.mesh.material.emissiveIntensity = near ? 0.6 : 0.0;
+  }
+}
+
+function handleInput() {
+  const onGround = !state.airborne && !state.grinding;
+
+  // Steering
+  const turnInput = (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0) - (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0);
+  if (onGround) {
+    state.heading += turnInput * TURN_SPEED * (0.3 + state.speed / MAX_SPEED * 0.7);
+  } else if (state.airborne) {
+    state.heading += turnInput * 0.015;
+  }
+
+  // Pushing / braking
+  if (onGround) {
+    if (keys['KeyW'] || keys['ArrowUp']) {
+      state.speed = Math.min(MAX_SPEED, state.speed + PUSH_ACCEL);
+      pushAnim = Math.min(1, pushAnim + 0.08);
+    } else {
+      pushAnim *= 0.85;
+    }
+    if (keys['KeyS'] || keys['ArrowDown']) {
+      state.speed = Math.max(-MAX_SPEED * 0.4, state.speed - PUSH_ACCEL * 1.5);
+    }
+  }
+
+  // Manual — only while moving forward on flat-ish ground
+  if (onGround && state.speed > 0.18) {
+    if (keys['KeyM']) {
+      if (!state.manualing) {
+        state.manualing = true;
+        state.manualTime = 0;
+        state.combo = Math.max(state.combo, 1);
+        showTrick('MANUAL');
+      }
+    }
+  }
+  if (state.manualing) {
+    if (!keys['KeyM'] || state.speed < 0.1 || state.airborne || state.grinding) {
+      // Exit manual — banked points already added each tick
+      state.manualing = false;
+    } else {
+      state.manualTime++;
+      if (state.manualTime % 12 === 0) addScore(15, 'MANUAL+');
+    }
+  }
+
+  // Jump charging
+  if (onGround && keys['Space']) {
+    state.jumpCharge = Math.min(JUMP_CHARGE_MAX, state.jumpCharge + 0.015);
+  }
+  // Release jump → Ollie or Nollie (Shift = Nollie)
+  if (onGround && !keys['Space'] && state.jumpCharge > 0) {
+    const nollie = keys['ShiftLeft'] || keys['ShiftRight'];
+    doOllie(nollie);
+  }
+
+  // Air spins
+  if (state.airborne) {
+    if (keys['KeyQ']) state.airSpinSpeed = -0.18;
+    else if (keys['KeyE']) state.airSpinSpeed = 0.18;
+
+    // Flip / shuv inputs — combinable for tre flip and varial heel
+    if (!state.currentTrick) {
+      const kf = keys['KeyJ'], hf = keys['KeyK'], sh = keys['KeyL'];
+      if (kf && sh)      startTrick('TRE FLIP',     { flip:  0.35, shuv:  0.28, base: 200 });
+      else if (hf && sh) startTrick('VARIAL HEEL',  { flip: -0.35, shuv:  0.28, base: 180 });
+      else if (kf)       startTrick('KICKFLIP',     { flip:  0.35,               base: 100 });
+      else if (hf)       startTrick('HEELFLIP',     { flip: -0.35,               base: 100 });
+      else if (sh)       startTrick('360 SHUV',     {              shuv:  0.28,  base: 120 });
+    }
+
+    // Grabs — hold any of UIOP while airborne
+    let grab = null;
+    if      (keys['KeyU']) grab = 'INDY';
+    else if (keys['KeyI']) grab = 'MUTE';
+    else if (keys['KeyO']) grab = 'MELON';
+    else if (keys['KeyP']) grab = 'STALEFISH';
+    if (grab) {
+      if (state.grab !== grab) {
+        state.grab = grab;
+        state.grabTime = 0;
+        showTrick(grab + ' GRAB');
+      }
+      state.grabTime++;
+      if (state.grabTime % 15 === 0) addScore(20, grab);
+    } else if (state.grab) {
+      state.grab = null;
+    }
+  }
+}
+
+function doOllie(nollie = false) {
+  state.airborne = true;
+  state.manualing = false;
+  // Nollies pop a bit lower; ollies use the full charged height
+  state.vel.y = (nollie ? JUMP_BASE * 0.82 : JUMP_BASE) + state.jumpCharge;
+  state.pos.y += 0.01;
+  state.jumpCharge = 0;
+  spawnParticle(state.pos.x, state.pos.y, state.pos.z, 0xffffff, 6);
+  if (!state.currentTrick) {
+    const name = nollie ? 'NOLLIE' : 'OLLIE';
+    state.currentTrick = name;
+    state.trickPoints = (nollie ? 65 : 50) + Math.floor(state.speed / MAX_SPEED * 50);
+    showTrick(name);
+  }
+}
+
+function startTrick(name, params) {
+  state.currentTrick = name;
+  if (params.flip) state.boardFlipSpeed = params.flip;
+  if (params.shuv) state.boardShuvSpeed = params.shuv;
+  const base = params.base != null ? params.base : 100;
+  state.trickPoints = base + Math.floor(state.speed / MAX_SPEED * 100);
+  showTrick(name);
+}
+
+function physics() {
+  // Apply forward velocity in heading direction
+  if (!state.grinding) {
+    const fwd = new THREE.Vector3(Math.sin(state.heading), 0, Math.cos(state.heading));
+    state.vel.x = fwd.x * state.speed;
+    state.vel.z = fwd.z * state.speed;
+  }
+
+  // Gravity
+  if (state.airborne) {
+    state.vel.y += GRAVITY;
+    state.speed *= AIR_FRICTION;
+    state.airSpin += state.airSpinSpeed;
+    state.heading += state.airSpinSpeed;
+    state.boardFlip += state.boardFlipSpeed;
+    state.boardShuv += state.boardShuvSpeed;
+  } else if (!state.grinding) {
+    state.speed *= FRICTION;
+  }
+
+  // Move
+  state.pos.add(state.vel);
+
+  // World bounds (keep player roughly in the park)
+  const limit = 95;
+  if (Math.abs(state.pos.x) > limit) state.pos.x = Math.sign(state.pos.x) * limit;
+  if (Math.abs(state.pos.z) > limit) state.pos.z = Math.sign(state.pos.z) * limit;
+
+  // Rail check — works on the way up or down, as long as we're in the air near rail height
+  if (state.airborne && state.pos.y < 2.2 && state.pos.y > 0.4) {
+    const r = nearestRail(state.pos.x, state.pos.y, state.pos.z);
+    if (r) {
+      const o = r.obs;
+
+      // Pick the rail direction (+1 or -1 along axis) that matches the way the player is moving.
+      // Use horizontal velocity (which already accounts for heading * speed), falling back to heading.
+      const movX = Math.abs(state.vel.x) + Math.abs(state.vel.z) > 0.01 ? state.vel.x : Math.sin(state.heading);
+      const movZ = Math.abs(state.vel.x) + Math.abs(state.vel.z) > 0.01 ? state.vel.z : Math.cos(state.heading);
+      const projection = movX * o.dx + movZ * o.dz;
+      const fwd = projection >= 0 ? 1 : -1;
+
+      // 50-50 vs boardslide: how aligned was the approach with the rail?
+      const movMag = Math.sqrt(movX*movX + movZ*movZ) || 1;
+      const alignment = Math.abs((movX * o.dx + movZ * o.dz) / movMag); // 1 = parallel, 0 = perpendicular
+      state.grindType = alignment < 0.5 ? 'BOARDSLIDE' : '50-50 GRIND';
+
+      // Snap onto the rail
+      state.grinding = true;
+      state.grindObstacle = o;
+      state.grindDir = fwd;
+      state.grindTime = 0;
+      state.airborne = false;
+      state.pos.x = r.px;
+      state.pos.z = r.pz;
+      state.pos.y = o.height + 0.16;
+      state.vel.y = 0;
+
+      // Heading: face along the rail in the direction we were moving
+      state.heading = Math.atan2(o.dx * fwd, o.dz * fwd);
+
+      // Keep some speed so the grind actually goes somewhere
+      state.speed = Math.max(Math.abs(state.speed), 0.25);
+
+      finishAirTrick(true);
+      addScore(state.grindType === 'BOARDSLIDE' ? 100 : 75, state.grindType);
+      spawnParticle(state.pos.x, state.pos.y, state.pos.z, 0xffaa00, 12);
+      return;
+    }
+  }
+
+  // Ground / surface check
+  const ground = getHeightAt(state.pos.x, state.pos.z);
+  const surfaceY = ground.h + 0.16; // board thickness above the surface
+
+  if (state.pos.y <= surfaceY) {
+    // Landed!
+    if (state.airborne) {
+      state.airborne = false;
+      state.pos.y = surfaceY;
+      state.vel.y = 0;
+      finishAirTrick(true);
+      // ramp bonus
+      if (ground.obs && ground.obs.type === 'ramp') {
+        // Launching off the ramp instead — convert downward to upward
+      }
+      spawnParticle(state.pos.x, surfaceY - 0.1, state.pos.z, 0xcccccc, 8);
+    } else {
+      state.pos.y = surfaceY;
+    }
+    state.groundY = surfaceY;
+  } else {
+    if (!state.airborne && !state.grinding) {
+      // walked off an edge
+      state.airborne = true;
+      state.vel.y = 0;
+    }
+  }
+
+  // Ramp launch: if we're on a ramp and moving up the slope fast, launch off the top
+  if (!state.airborne && ground.obs && ground.obs.type === 'ramp') {
+    const o = ground.obs;
+    const lx = state.pos.x - o.x;
+    const lz = state.pos.z - o.z;
+    const cs = Math.cos(-o.rotY), sn = Math.sin(-o.rotY);
+    const rx = lx * cs - lz * sn;
+    if (rx > o.d/2 - 0.5 && state.speed > 0.2) {
+      // moving up & off the lip
+      const upDir = new THREE.Vector3(Math.sin(state.heading), 0, Math.cos(state.heading));
+      // dot with ramp's outward direction to ensure we're going up the slope
+      const rampOutX = Math.cos(o.rotY);
+      const rampOutZ = -Math.sin(o.rotY);
+      const dot = upDir.x * rampOutX + upDir.z * rampOutZ;
+      if (dot > 0.3) {
+        state.airborne = true;
+        state.vel.y = 0.35 + state.speed * 0.6;
+        state.pos.y += 0.05;
+        spawnParticle(state.pos.x, state.pos.y, state.pos.z, 0xffff66, 10);
+        addScore(40, 'AIR');
+      }
+    }
+  }
+
+  // Grinding — slide along the rail until we run off the end or hop off
+  if (state.grinding) {
+    state.grindTime++;
+    const o = state.grindObstacle;
+
+    // Gentle decay; faster slides feel better than constant-speed creep
+    state.speed = Math.max(0.18, state.speed * 0.997);
+
+    // Move along the rail axis in our chosen direction
+    state.pos.x += o.dx * state.speed * state.grindDir;
+    state.pos.z += o.dz * state.speed * state.grindDir;
+    state.pos.y = o.height + 0.16;
+
+    // Lock vel to match for camera/physics consistency
+    state.vel.x = o.dx * state.speed * state.grindDir;
+    state.vel.z = o.dz * state.speed * state.grindDir;
+
+    // Sparks
+    if (state.grindTime % 3 === 0) {
+      spawnParticle(state.pos.x, state.pos.y - 0.15, state.pos.z, 0xffcc00, 2);
+    }
+
+    // Points tick (boardslides score more per tick)
+    if (state.grindTime % 18 === 0) {
+      const tickPts = state.grindType === 'BOARDSLIDE' ? 35 : 25;
+      addScore(tickPts, state.grindType + '+');
+    }
+
+    // Ran off the end?
+    const lx = state.pos.x - o.x;
+    const lz = state.pos.z - o.z;
+    const t = lx * o.dx + lz * o.dz;
+    if (Math.abs(t) > o.length / 2) {
+      state.grinding = false;
+      state.airborne = true;
+      state.vel.y = 0.15;
+      state.grindObstacle = null;
+      // Carry off-rail speed forward
+      state.heading = Math.atan2(state.vel.x, state.vel.z);
+    }
+
+    // Hop off rail with Space
+    if (keys['Space']) {
+      state.grinding = false;
+      state.airborne = true;
+      state.vel.y = JUMP_BASE * 0.9;
+      state.grindObstacle = null;
+      state.heading = Math.atan2(state.vel.x, state.vel.z);
+      addScore(50, 'HOP OFF');
+      spawnParticle(state.pos.x, state.pos.y, state.pos.z, 0xffffff, 6);
+    }
+  }
+}
+
+function handleTricks() {
+  // decay air spin (slight damping)
+  state.airSpinSpeed *= 0.99;
+}
+
+function finishAirTrick(landed) {
+  // Manual exits the moment we leave the ground anyway; double-clear is safe
+  if (landed && state.currentTrick) {
+    let points = state.trickPoints || 50;
+    const fullRots = Math.floor(Math.abs(state.airSpin) / (Math.PI * 2));
+    if (fullRots > 0) points += fullRots * 100;
+    const flips = Math.floor(Math.abs(state.boardFlip) / (Math.PI * 2));
+    if (flips > 0) points += flips * 50;
+    const shuvs = Math.floor(Math.abs(state.boardShuv) / (Math.PI * 2));
+    if (shuvs > 0) points += shuvs * 50;
+    // Grab bonus — longer hold = more points
+    if (state.grab) points += Math.min(200, state.grabTime * 3);
+    const name = state.currentTrick + (fullRots ? ' ' + (fullRots * 360) : '') +
+                 (state.grab ? ' + ' + state.grab : '');
+    addScore(points, name);
+  } else if (!landed) {
+    // bailed — bust combo
+    finishCombo();
+  }
+  state.currentTrick = null;
+  state.trickPoints = 0;
+  state.airSpin = 0;
+  state.airSpinSpeed = 0;
+  state.boardFlip = 0;
+  state.boardFlipSpeed = 0;
+  state.boardShuv = 0;
+  state.boardShuvSpeed = 0;
+  state.grab = null;
+  state.grabTime = 0;
+}
+
+function updateCombo() {
+  if (state.combo > 0 && !state.airborne && !state.grinding) {
+    state.comboTimer--;
+    if (state.comboTimer <= 0) finishCombo();
+  }
+}
+
+function updateSkaterMesh() {
+  skater.position.copy(state.pos);
+  skater.rotation.y = state.heading;
+
+  // Board orientation
+  let boardZ = state.boardFlip;
+  let boardY = state.boardShuv;
+  let boardX = 0;
+
+  // Boardslide: board sits perpendicular to the skater's facing
+  if (state.grinding && state.grindType === 'BOARDSLIDE') {
+    boardY += Math.PI / 2;
+  }
+  // Manual: board pitches up so only back wheels are on the ground
+  if (state.manualing) {
+    boardX = -0.45;
+  }
+
+  boardGroup.rotation.set(boardX, boardY, boardZ);
+  boardGroup.position.y = state.airborne ? -0.05 : (state.manualing ? 0.08 : 0);
+
+  // Crouch when charging jump
+  const crouch = state.jumpCharge / JUMP_CHARGE_MAX * 0.3;
+  charGroup.position.y = -crouch * 0.5;
+  charGroup.scale.y = 1 - crouch * 0.25;
+
+  // Pushing animation
+  legR.rotation.x = Math.sin(pushAnim * Math.PI * 2 + performance.now() * 0.01) * pushAnim * 0.6;
+
+  // Arm sway based on speed
+  const sway = Math.sin(performance.now() * 0.005) * (state.speed / MAX_SPEED) * 0.4;
+  armL.rotation.x = sway;
+  armR.rotation.x = -sway;
+
+  // Body tilt: forward at speed, back when manualing, lean into grabs
+  let bodyTilt = state.speed / MAX_SPEED * 0.15;
+  if (state.manualing) bodyTilt = -0.35;
+  if (state.grab) bodyTilt = 0.55; // tuck forward to grab
+  charGroup.rotation.x = bodyTilt;
+
+  // Arms reach down toward the board on grabs
+  if (state.grab) {
+    armL.rotation.x = -1.1;
+    armR.rotation.x = -1.1;
+  }
+
+  // Tilt board left/right when carving on the ground (skip during boardslide / manual / grinding)
+  const turning = (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0) - (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0);
+  if (!state.airborne && !state.grinding && !state.manualing) {
+    boardGroup.rotation.z = turning * 0.2 * (state.speed / MAX_SPEED);
+  }
+
+  wheelSpin += state.speed * 4;
+}
+
+function updateCamera() {
+  const lookAhead = new THREE.Vector3(Math.sin(state.heading), 0, Math.cos(state.heading)).multiplyScalar(4);
+  camTarget.copy(state.pos).add(lookAhead).add(new THREE.Vector3(0, 1, 0));
+
+  // camera position is behind the skater
+  const desiredCam = new THREE.Vector3(
+    state.pos.x - Math.sin(state.heading) * 8,
+    state.pos.y + 4 + (state.airborne ? state.vel.y * 4 : 0),
+    state.pos.z - Math.cos(state.heading) * 8
+  );
+  camera.position.lerp(desiredCam, 0.08);
+  camera.lookAt(camTarget);
+}
+
+function updateHUD() {
+  const pct = Math.min(100, Math.abs(state.speed) / MAX_SPEED * 100);
+  speedFillEl.style.width = pct + '%';
+  if (state.trickTimer > 0) {
+    state.trickTimer--;
+    if (state.trickTimer === 0) trickEl.textContent = '';
+  }
+}
+
+// ============================================================
+// LEVEL EDITOR
+// ============================================================
+let editorMode = false;
+let editorTool = 'rail';
+let editorRotation = 0;
+const editorPan = new THREE.Vector3(0, 0, 0);
+const editorPlacements = [];
+let ghost = null;
+
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2(0, 0);
+const mouseGroundPoint = new THREE.Vector3();
+
+const editorBtn = document.getElementById('editorBtn');
+const editorPanel = document.getElementById('editorPanel');
+const editorDone = document.getElementById('editorDone');
+const editorRotLabel = document.getElementById('editorRotLabel');
+const toolButtons = editorPanel.querySelectorAll('.tools button');
+
+editorBtn.addEventListener('click', enterEditor);
+editorDone.addEventListener('click', exitEditor);
+toolButtons.forEach(b => b.addEventListener('click', () => setEditorTool(b.dataset.tool)));
+
+function enterEditor() {
+  if (!started) { titleEl.style.display = 'none'; started = true; }
+  editorMode = true;
+  editorPanel.style.display = 'block';
+  editorBtn.style.display = 'none';
+  document.body.classList.add('editing');
+  editorPan.copy(state.pos);
+  rebuildGhost();
+  updateRotLabel();
+}
+
+function exitEditor() {
+  editorMode = false;
+  editorPanel.style.display = 'none';
+  editorBtn.style.display = 'block';
+  document.body.classList.remove('editing');
+  if (ghost) { scene.remove(ghost); ghost = null; }
+}
+
+function setEditorTool(tool) {
+  editorTool = tool;
+  toolButtons.forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+  rebuildGhost();
+}
+
+function updateRotLabel() {
+  const deg = Math.round((editorRotation * 180 / Math.PI) % 360);
+  editorRotLabel.textContent = 'Rotation: ' + deg + '°' + (editorTool === 'tree' ? ' (n/a for trees)' : '');
+}
+
+function ghostMat(color) {
+  return new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false });
+}
+
+function rebuildGhost() {
+  if (ghost) { scene.remove(ghost); ghost = null; }
+  if (editorTool === 'rail') {
+    const length = 14;
+    const g = new THREE.CylinderGeometry(0.12, 0.12, length, 8);
+    g.rotateZ(Math.PI / 2);
+    ghost = new THREE.Mesh(g, ghostMat(0x00ffaa));
+  } else if (editorTool === 'ramp') {
+    const h = 3, d = 6, w = 12;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0); shape.lineTo(d, 0); shape.lineTo(d, h); shape.lineTo(0, 0);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
+    g.translate(-d/2, 0, -w/2);
+    ghost = new THREE.Mesh(g, ghostMat(0xff66cc));
+  } else if (editorTool === 'tree') {
+    const grp = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 6, 8), ghostMat(0x66ff66));
+    trunk.position.y = 3;
+    grp.add(trunk);
+    const leaves = new THREE.Mesh(new THREE.SphereGeometry(2.5, 8, 6), ghostMat(0x66ff66));
+    leaves.position.y = 7;
+    grp.add(leaves);
+    ghost = grp;
+  }
+  if (ghost) scene.add(ghost);
+  updateRotLabel();
+}
+
+function updateGhost() {
+  if (!ghost) return;
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hits = raycaster.intersectObject(ground);
+  if (hits.length > 0) {
+    mouseGroundPoint.copy(hits[0].point);
+    ghost.visible = true;
+    ghost.position.set(mouseGroundPoint.x, 0, mouseGroundPoint.z);
+    if (editorTool === 'rail') ghost.position.y = 1.0;
+    if (editorTool !== 'tree') ghost.rotation.y = editorRotation;
+  } else {
+    ghost.visible = false;
+  }
+}
+
+function placeFromEditor() {
+  if (!ghost || !ghost.visible) return;
+  const x = mouseGroundPoint.x, z = mouseGroundPoint.z;
+  let meshes = null;
+  if (editorTool === 'rail')      meshes = addRail(14, x, z, editorRotation);
+  else if (editorTool === 'ramp') meshes = addRamp(12, 3, 6, x, z, editorRotation, 0xaaccff);
+  else if (editorTool === 'tree') meshes = addTree(x, z);
+  if (meshes) editorPlacements.push({ tool: editorTool, meshes });
+}
+
+function undoEditor() {
+  const last = editorPlacements.pop();
+  if (!last) return;
+  for (const m of last.meshes) scene.remove(m);
+  // Drop the obstacle entry too (if any)
+  const idx = obstacles.findIndex(o => last.meshes.includes(o.mesh));
+  if (idx >= 0) obstacles.splice(idx, 1);
+}
+
+function handleEditorInput() {
+  const speed = 1.1;
+  if (keys['KeyW'] || keys['ArrowUp'])    editorPan.z += speed;
+  if (keys['KeyS'] || keys['ArrowDown'])  editorPan.z -= speed;
+  if (keys['KeyA'] || keys['ArrowLeft'])  editorPan.x -= speed;
+  if (keys['KeyD'] || keys['ArrowRight']) editorPan.x += speed;
+  editorPan.x = Math.max(-150, Math.min(150, editorPan.x));
+  editorPan.z = Math.max(-150, Math.min(150, editorPan.z));
+}
+
+function updateEditorCamera() {
+  // High oblique view looking down toward the pan point
+  const desired = new THREE.Vector3(editorPan.x, 55, editorPan.z - 30);
+  camera.position.lerp(desired, 0.18);
+  camera.lookAt(editorPan.x, 0, editorPan.z);
+}
+
+// Mouse tracking on the canvas
+renderer.domElement.addEventListener('mousemove', (e) => {
+  mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+renderer.domElement.addEventListener('click', () => {
+  if (editorMode) placeFromEditor();
+});
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (!editorMode) return;
+  e.preventDefault();
+  editorRotation += Math.sign(e.deltaY) * (Math.PI / 12); // 15° steps
+  updateRotLabel();
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (!editorMode) return;
+  if (e.code === 'Escape') exitEditor();
+  else if (e.code === 'KeyZ') undoEditor();
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
