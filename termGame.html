@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>K4LI :: Hack the Planet</title>
+<style>
+  :root {
+    --bg: #050807;
+    --panel: #0a1410;
+    --green: #39ff14;
+    --green-dim: #1f8a0c;
+    --amber: #ffb000;
+    --red: #ff3b3b;
+    --grid: rgba(57,255,20,0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--green);
+    font-family: "Courier New", ui-monospace, Menlo, monospace;
+    overflow: hidden;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      radial-gradient(ellipse at center, rgba(0,40,0,0.35), #000 80%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.25) 3px,
+      rgba(0,0,0,0) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+    mix-blend-mode: multiply;
+  }
+  #app { position: relative; z-index: 1; height: 100%; }
+
+  /* ---------- LEVEL SELECT ---------- */
+  #lobby {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .title {
+    font-size: 42px;
+    letter-spacing: 8px;
+    text-shadow: 0 0 8px var(--green), 0 0 24px var(--green-dim);
+    margin: 12px 0 4px;
+  }
+  .subtitle {
+    color: var(--green-dim);
+    letter-spacing: 4px;
+    margin-bottom: 28px;
+  }
+  .levels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    width: 100%;
+    max-width: 1100px;
+  }
+  .level-card {
+    background: var(--panel);
+    border: 1px solid var(--green-dim);
+    padding: 16px;
+    cursor: pointer;
+    transition: transform .12s, box-shadow .12s, border-color .12s;
+    position: relative;
+  }
+  .level-card:hover {
+    border-color: var(--green);
+    box-shadow: 0 0 18px rgba(57,255,20,0.35);
+    transform: translateY(-2px);
+  }
+  .level-card .diff {
+    position: absolute; top: 10px; right: 12px;
+    font-size: 11px; color: var(--amber);
+    letter-spacing: 2px;
+  }
+  .level-card h3 {
+    margin: 0 0 6px;
+    color: var(--green);
+    letter-spacing: 2px;
+  }
+  .level-card p {
+    margin: 0;
+    color: #9ad99a;
+    font-size: 13px;
+  }
+  .level-card .ip {
+    margin-top: 10px;
+    color: var(--green-dim);
+    font-size: 12px;
+  }
+  .legal {
+    margin: 28px 0 8px;
+    color: #4a6e4a;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-align: center;
+    max-width: 760px;
+  }
+
+  /* ---------- GAME VIEW ---------- */
+  #game { display: none; height: 100%; padding: 16px; }
+  .game-wrap {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+    height: 100%;
+  }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .btn {
+    background: transparent;
+    color: var(--green);
+    border: 1px solid var(--green-dim);
+    padding: 6px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: background .12s, color .12s, box-shadow .12s;
+  }
+  .btn:hover { background: var(--green); color: #000; box-shadow: 0 0 12px var(--green); }
+  .btn.danger { color: var(--red); border-color: var(--red); }
+  .btn.danger:hover { background: var(--red); color: #000; box-shadow: 0 0 12px var(--red); }
+  .btn.amber { color: var(--amber); border-color: var(--amber); }
+  .btn.amber:hover { background: var(--amber); color: #000; box-shadow: 0 0 12px var(--amber); }
+
+  .target-tag {
+    margin-left: auto;
+    color: var(--amber);
+    letter-spacing: 2px;
+    font-size: 13px;
+  }
+  .progress {
+    color: var(--green-dim);
+    font-size: 12px;
+    margin-left: 14px;
+  }
+
+  /* terminal window */
+  .terminal {
+    background: #000;
+    border: 1px solid var(--green-dim);
+    box-shadow: 0 0 22px rgba(57,255,20,0.25) inset, 0 0 22px rgba(57,255,20,0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .term-bar {
+    background: linear-gradient(#0a1a10, #06100a);
+    border-bottom: 1px solid var(--green-dim);
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    gap: 8px;
+    font-size: 12px;
+    color: #9ad99a;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display:inline-block; }
+  .dot.r { background:#ff5f56; } .dot.y { background:#ffbd2e; } .dot.g { background:#27c93f; }
+  .term-title { margin-left: 8px; letter-spacing: 2px; }
+  .term-body {
+    flex: 1;
+    padding: 10px 14px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .term-body .line { display: block; }
+  .term-body .ok { color: #6cff6c; }
+  .term-body .warn { color: var(--amber); }
+  .term-body .bad { color: var(--red); }
+  .term-body .dim { color: #4a8a4a; }
+  .input-line {
+    display: flex;
+    padding: 6px 14px 12px;
+    background: #000;
+    border-top: 1px solid #0d2a16;
+  }
+  .prompt { color: var(--amber); margin-right: 6px; white-space: nowrap; }
+  .prompt .user { color: var(--green); }
+  .prompt .at { color: #6cff6c; }
+  .prompt .host { color: var(--green); }
+  .prompt .path { color: #9ad99a; }
+  #cmd {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--green);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    caret-color: var(--green);
+  }
+
+  /* ---------- MODAL: NOTES ---------- */
+  .modal-back {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.78);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .modal-back.show { display: flex; }
+  .modal {
+    width: min(640px, 92vw);
+    max-height: 80vh;
+    background: var(--panel);
+    border: 1px solid var(--green);
+    box-shadow: 0 0 30px rgba(57,255,20,0.35);
+    display: flex;
+    flex-direction: column;
+  }
+  .modal header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--green-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: 2px;
+  }
+  .modal .content {
+    padding: 14px 18px;
+    overflow-y: auto;
+    color: #c7f0c7;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .modal .content h4 {
+    color: var(--amber); margin: 14px 0 4px; letter-spacing: 2px;
+  }
+  .modal .content code {
+    color: var(--green);
+    background: #062a13;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .modal .content ul { margin: 4px 0 4px 18px; padding: 0; }
+  .closex {
+    background: transparent;
+    border: 1px solid var(--green-dim);
+    color: var(--green);
+    cursor: pointer;
+    padding: 2px 8px;
+  }
+
+  /* blink */
+  .blink::after {
+    content: "▍";
+    animation: blink 1s steps(1) infinite;
+    margin-left: 2px;
+    color: var(--green);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* PWNED overlay */
+  #pwned {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    color: var(--red);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 100;
+    text-shadow: 0 0 10px var(--red);
+  }
+  #pwned.show { display: flex; }
+  #pwned h1 {
+    font-size: 84px;
+    letter-spacing: 14px;
+    margin: 0;
+    animation: glitch 0.15s steps(2) infinite;
+  }
+  @keyframes glitch {
+    0% { transform: translate(0,0); }
+    25% { transform: translate(-2px,1px); }
+    50% { transform: translate(2px,-1px); }
+    75% { transform: translate(-1px,-2px); }
+    100% { transform: translate(1px,2px); }
+  }
+  #pwned p { color: var(--amber); letter-spacing: 4px; }
+
+  /* ---------- LOGIN ---------- */
+  #login {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200;
+    background: var(--bg);
+  }
+  #login::before {
+    content: "";
+    position: absolute; inset: 0;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      radial-gradient(ellipse at center, rgba(0,40,0,0.35), #000 80%);
+    pointer-events: none;
+  }
+  .login-box {
+    position: relative;
+    border: 1px solid var(--green);
+    background: var(--panel);
+    padding: 28px 32px;
+    width: min(440px, 92vw);
+    box-shadow: 0 0 30px rgba(57,255,20,0.4);
+  }
+  .login-box h2 {
+    color: var(--green);
+    letter-spacing: 8px;
+    margin: 0 0 6px;
+    text-align: center;
+    text-shadow: 0 0 8px var(--green);
+  }
+  .login-tag {
+    text-align: center;
+    color: #4a8a4a;
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin-bottom: 14px;
+  }
+  .login-box label {
+    display: block; margin: 12px 0 4px;
+    color: var(--green-dim); letter-spacing: 2px; font-size: 12px;
+  }
+  .login-box input {
+    width: 100%;
+    background: #000; border: 1px solid var(--green-dim);
+    color: var(--green); padding: 8px 10px;
+    font-family: inherit; font-size: 14px; outline: none;
+  }
+  .login-box input:focus { border-color: var(--green); box-shadow: 0 0 10px rgba(57,255,20,0.4); }
+  .login-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .login-actions .btn { flex: 1; }
+  .login-status {
+    margin-top: 12px; min-height: 18px;
+    font-size: 12px; letter-spacing: 1px; text-align: center;
+    color: #4a8a4a;
+  }
+  .login-status.ok { color: #6cff6c; }
+  .login-status.bad { color: var(--red); }
+
+  /* dev badge & user indicator */
+  #devBadge {
+    background: linear-gradient(90deg, var(--amber), var(--green));
+    color: #000;
+    padding: 3px 10px;
+    font-size: 11px;
+    letter-spacing: 3px;
+    margin-left: 8px;
+    font-weight: bold;
+    display: none;
+  }
+  #devBadge.show { display: inline-block; }
+  .user-ind {
+    margin: -10px 0 18px;
+    color: #4a8a4a;
+    font-size: 11px;
+    letter-spacing: 2px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .user-ind .btn { font-size: 10px; padding: 2px 10px; }
+
+  /* ---------- BUILDER MODAL ---------- */
+  .modal.wide { width: min(880px, 96vw); max-height: 90vh; }
+  .builder-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 14px;
+  }
+  .builder-grid .full { grid-column: 1 / -1; }
+  .fld { display: flex; flex-direction: column; margin-bottom: 8px; }
+  .fld label {
+    color: var(--amber); letter-spacing: 2px; font-size: 11px;
+    margin-bottom: 3px;
+  }
+  .fld input, .fld select, .fld textarea {
+    background: #000; border: 1px solid var(--green-dim);
+    color: var(--green); padding: 6px 8px;
+    font-family: inherit; font-size: 13px; outline: none;
+  }
+  .fld textarea { min-height: 60px; resize: vertical; }
+  .fld input:focus, .fld select:focus, .fld textarea:focus {
+    border-color: var(--green); box-shadow: 0 0 8px rgba(57,255,20,0.3);
+  }
+  .fld .hintx { color: #4a8a4a; font-size: 10px; margin-top: 2px; }
+  .steps-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .step-row {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr auto;
+    gap: 6px;
+    align-items: center;
+    border: 1px dashed var(--green-dim);
+    padding: 6px;
+  }
+  .step-row input {
+    width: 100%;
+    background:#000; border:1px solid var(--green-dim);
+    color:var(--green); padding:4px 6px;
+    font-family:inherit; font-size:12px; outline:none;
+  }
+  .step-row input:focus { border-color: var(--green); }
+  .step-row .x {
+    background:transparent; color:var(--red);
+    border:1px solid var(--red); padding: 2px 10px;
+    cursor: pointer; font-family: inherit;
+  }
+  .tpl-row {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 12px; align-items: center;
+  }
+  .tpl-row .lbl {
+    color: var(--amber); letter-spacing: 2px; font-size: 11px;
+  }
+  .tpl-row .tpl {
+    background: transparent; border: 1px solid var(--amber);
+    color: var(--amber); padding: 4px 10px;
+    font-family: inherit; font-size: 11px; letter-spacing: 1px;
+    cursor: pointer;
+  }
+  .tpl-row .tpl:hover { background: var(--amber); color: #000; }
+  .section-h {
+    color: var(--amber); letter-spacing: 3px; font-size: 12px;
+    border-bottom: 1px solid var(--green-dim);
+    padding-bottom: 4px; margin: 12px 0 8px;
+    grid-column: 1 / -1;
+  }
+  .builder-actions {
+    display: flex; gap: 10px; justify-content: flex-end;
+    margin-top: 16px; padding-top: 12px;
+    border-top: 1px solid var(--green-dim);
+    grid-column: 1 / -1;
+    align-items: center;
+  }
+
+  /* ANSWERS view */
+  #answersModal .ans-flag {
+    background: #062a13; padding: 8px 12px;
+    color: #6cff6c; letter-spacing: 1px;
+    border-left: 3px solid var(--green);
+    margin: 4px 0 10px;
+    font-weight: bold;
+  }
+  #answersModal .ans-step {
+    margin: 4px 0; padding: 6px 0;
+    border-bottom: 1px dotted var(--green-dim);
+  }
+  #answersModal .ans-step code { color: var(--amber); }
+  #answersModal .ans-rx {
+    font-size: 10px; color: #4a8a4a;
+    margin-top: 2px;
+  }
+
+  /* delete + custom indicators on level cards */
+  .level-card .del {
+    position: absolute; bottom: 8px; right: 10px;
+    background: transparent; border: 1px solid var(--red);
+    color: var(--red); font-size: 10px; padding: 2px 8px;
+    letter-spacing: 1px; cursor: pointer;
+    font-family: inherit;
+    display: none;
+  }
+  .level-card:hover .del { display: inline-block; }
+  .level-card .custom-tag {
+    position: absolute; bottom: 10px; left: 12px;
+    font-size: 10px; color: var(--amber); letter-spacing: 2px;
+  }
+  .level-card.new-card {
+    border-style: dashed;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; min-height: 110px;
+    color: var(--amber);
+  }
+  .level-card.new-card:hover { box-shadow: 0 0 18px rgba(255,176,0,0.35); border-color: var(--amber); }
+  .level-card.new-card .plus {
+    font-size: 36px; line-height: 1; margin-bottom: 4px;
+  }
+  .level-card.new-card h3 {
+    color: var(--amber); margin: 0;
+  }
+  .level-card.new-card p {
+    color: #b89460; margin: 4px 0 0;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN OVERLAY -->
+  <div id="login">
+    <div class="login-box">
+      <h2>K4LI//AUTH</h2>
+      <div class="login-tag">// terminal access · guest mode supported</div>
+      <label>USERNAME</label>
+      <input id="loginUser" autocomplete="off" />
+      <label>PASSWORD</label>
+      <input id="loginPass" type="password" autocomplete="off" />
+      <div class="login-status" id="loginStatus">awaiting credentials...</div>
+      <div class="login-actions">
+        <button class="btn" id="loginBtn">[ LOGIN ]</button>
+        <button class="btn amber" id="guestBtn">[ GUEST ]</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEVEL SELECT -->
+  <section id="lobby">
+    <div class="title blink">K4LI//NET</div>
+    <div class="subtitle">&gt; select target &gt; gain root &gt; disappear</div>
+    <div class="user-ind">
+      <span id="userIndicator">// guest mode</span>
+      <button class="btn amber" id="reloginBtn">[ AUTH ]</button>
+    </div>
+    <div class="levels" id="levels"></div>
+    <div class="legal">
+      // SIMULATION ONLY. This is a fictional game. No real systems are contacted, no real exploits are executed. //
+    </div>
+  </section>
+
+  <!-- GAME VIEW -->
+  <section id="game">
+    <div class="game-wrap">
+      <div class="toolbar">
+        <button class="btn" id="backBtn">&lt; LOBBY</button>
+        <button class="btn amber" id="notesBtn">[ NOTES ]</button>
+        <button class="btn" id="hintBtn">[ HINT ]</button>
+        <button class="btn danger" id="answersBtn" style="display:none">[ ANSWERS ]</button>
+        <span class="progress" id="progress"></span>
+        <span id="devBadge">ADMIN</span>
+        <span class="target-tag" id="targetTag"></span>
+      </div>
+      <div class="terminal">
+        <div class="term-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="term-title" id="termTitle">root@kali: ~</span>
+        </div>
+        <div class="term-body" id="term"></div>
+        <div class="input-line">
+          <span class="prompt">
+            <span class="user">root</span><span class="at">@</span><span class="host">kali</span>:<span class="path">~</span>#&nbsp;
+          </span>
+          <input id="cmd" autocomplete="off" spellcheck="false" autofocus />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NOTES MODAL -->
+  <div class="modal-back" id="notesModal">
+    <div class="modal">
+      <header>
+        <span>// TARGET NOTES</span>
+        <button class="closex" id="closeNotes">X</button>
+      </header>
+      <div class="content" id="notesContent"></div>
+    </div>
+  </div>
+
+  <!-- PWNED -->
+  <div id="pwned">
+    <h1>PWNED</h1>
+    <p id="pwnedSub">root shell acquired</p>
+    <p style="margin-top:18px;color:#9ad99a;letter-spacing:2px;">press any key to return</p>
+  </div>
+
+  <!-- ANSWERS MODAL (dev only) -->
+  <div class="modal-back" id="answersModal">
+    <div class="modal">
+      <header>
+        <span>// SOLUTION KEY (ADMIN)</span>
+        <button class="closex" id="closeAnswers">X</button>
+      </header>
+      <div class="content" id="answersContent"></div>
+    </div>
+  </div>
+
+  <!-- BUILDER MODAL -->
+  <div class="modal-back" id="builderModal">
+    <div class="modal wide">
+      <header>
+        <span>// LEVEL BUILDER</span>
+        <button class="closex" id="closeBuilder">X</button>
+      </header>
+      <div class="content">
+        <div class="tpl-row">
+          <span class="lbl">QUICK TEMPLATE:</span>
+          <button class="tpl" data-tpl="web_rce">Web RCE</button>
+          <button class="tpl" data-tpl="ssh_brute">SSH Brute</button>
+          <button class="tpl" data-tpl="hash_crack">Hash Crack (john)</button>
+          <button class="tpl" data-tpl="bin_exploit">Binary Exploit</button>
+          <button class="tpl" data-tpl="ot_scada">OT/SCADA</button>
+          <button class="tpl" data-tpl="clear">Clear</button>
+        </div>
+        <div class="builder-grid">
+
+          <div class="section-h">// LEVEL META</div>
+          <div class="fld">
+            <label>ID (slug) *</label>
+            <input id="bd_id" placeholder="my-level" />
+            <span class="hintx">lowercase, letters/digits/dash/underscore</span>
+          </div>
+          <div class="fld">
+            <label>NAME *</label>
+            <input id="bd_name" placeholder="MYLEVEL" />
+          </div>
+          <div class="fld">
+            <label>DIFFICULTY</label>
+            <select id="bd_diff">
+              <option>EASY</option>
+              <option>MEDIUM</option>
+              <option>HARD</option>
+              <option>INSANE</option>
+              <option>NIGHTMARE</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>THEME COLOR</label>
+            <select id="bd_color">
+              <option value="green">green</option>
+              <option value="amber">amber</option>
+              <option value="red">red</option>
+              <option value="cyan">cyan</option>
+              <option value="magenta">magenta</option>
+            </select>
+          </div>
+          <div class="fld full">
+            <label>BLURB</label>
+            <input id="bd_blurb" placeholder="Short description shown on the lobby card." />
+          </div>
+
+          <div class="section-h">// TARGET FINGERPRINT</div>
+          <div class="fld">
+            <label>IP *</label>
+            <input id="bd_ip" placeholder="10.0.0.1" />
+          </div>
+          <div class="fld">
+            <label>HOSTNAME</label>
+            <input id="bd_hostname" placeholder="my-target" />
+          </div>
+          <div class="fld">
+            <label>OS</label>
+            <input id="bd_os" placeholder="Ubuntu 22.04" />
+          </div>
+          <div class="fld">
+            <label>FLAG *</label>
+            <input id="bd_flag" placeholder="FLAG{...}" />
+          </div>
+          <div class="fld full">
+            <label>UNAME -A (full string)</label>
+            <input id="bd_uname" placeholder="Linux mytarget 5.15.0-generic #1 SMP x86_64 GNU/Linux" />
+          </div>
+
+          <div class="section-h">// CONTENT (one entry per line)</div>
+          <div class="fld">
+            <label>SERVICES</label>
+            <textarea id="bd_services" placeholder="22/tcp ssh OpenSSH 8.4&#10;80/tcp http nginx 1.18"></textarea>
+          </div>
+          <div class="fld">
+            <label>USERS</label>
+            <textarea id="bd_users" placeholder="root&#10;admin&#10;www-data"></textarea>
+          </div>
+          <div class="fld full">
+            <label>INTEL (shows in NOTES)</label>
+            <textarea id="bd_intel" placeholder="Default creds rumored.&#10;Backup file is publicly readable."></textarea>
+          </div>
+
+          <div class="section-h">// STEPS (ordered objectives)</div>
+          <div class="full">
+            <span class="hintx">left = regex to match command (e.g. <code>^nmap(\s|$)</code>) · right = hint shown to player</span>
+            <div class="steps-list" id="bd_steps"></div>
+            <button class="btn amber" id="bd_addStep" style="margin-top:8px;">+ ADD STEP</button>
+          </div>
+
+          <div class="section-h">// EXTRAS (optional)</div>
+          <div class="fld full">
+            <label>CUSTOM PWN SUBTITLE</label>
+            <input id="bd_pwn" placeholder="root shell acquired" />
+          </div>
+
+          <div class="builder-actions">
+            <span id="builderStatus" style="margin-right:auto;color:#4a8a4a;font-size:12px;"></span>
+            <button class="btn" id="bd_cancel">CANCEL</button>
+            <button class="btn amber" id="bd_save">SAVE LEVEL</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== LEVEL DATA ===================== */
+const LEVELS = [
+  {
+    id: "ghostnet",
+    name: "GHOSTNET",
+    diff: "EASY",
+    blurb: "Forgotten Ubuntu webserver. Default creds rumored.",
+    ip: "10.10.13.37",
+    target: {
+      hostname: "ghostnet-web01",
+      ip: "10.10.13.37",
+      os: "Ubuntu 18.04.6 LTS",
+      uname: "Linux ghostnet-web01 4.15.0-200-generic #211-Ubuntu SMP x86_64 GNU/Linux",
+      services: ["22/tcp ssh OpenSSH 7.6p1", "80/tcp http Apache 2.4.29", "3306/tcp mysql 5.7"],
+      users: ["root", "admin", "www-data"],
+      intel: [
+        "Admin reused password 'password123' on legacy panels.",
+        "Apache serves /admin behind basic auth.",
+        "MySQL bound to 0.0.0.0 (mistake)."
+      ],
+      flag: "FLAG{def4ult_cr3ds_n3v3r_die}"
+    },
+    steps: [
+      { cmd: /^nmap(\s|$)/, hint: "Scan the target. Try `nmap 10.10.13.37`." },
+      { cmd: /^hydra(\s|$)/, hint: "Brute force ssh. `hydra -l admin -P rockyou.txt ssh://10.10.13.37`" },
+      { cmd: /^ssh(\s|$)/, hint: "Log in. `ssh admin@10.10.13.37`" },
+      { cmd: /^sudo(\s|$)/, hint: "Try `sudo -l` or `sudo su`." },
+      { cmd: /^cat\s+\/root\/flag/, hint: "Read the flag at /root/flag.txt." }
+    ]
+  },
+  {
+    id: "blackice",
+    name: "BLACKICE",
+    diff: "MEDIUM",
+    blurb: "CentOS dev box. WordPress, sloppy plugins.",
+    ip: "172.22.4.88",
+    target: {
+      hostname: "blackice-dev",
+      ip: "172.22.4.88",
+      os: "CentOS 7.9",
+      uname: "Linux blackice-dev 3.10.0-1160.el7.x86_64 #1 SMP x86_64 GNU/Linux",
+      services: ["22/tcp ssh OpenSSH 7.4", "80/tcp http nginx 1.20", "443/tcp https nginx 1.20"],
+      users: ["root", "dev", "wp_user"],
+      intel: [
+        "Wordpress 5.7 with vulnerable 'easy-forms' plugin.",
+        "Backup file backup.zip publicly readable.",
+        "Cron runs /opt/cleanup.sh as root every 5m, dev can write to it."
+      ],
+      flag: "FLAG{cr0n_ate_my_h0mework}"
+    },
+    steps: [
+      { cmd: /^nmap(\s|$)/, hint: "Map the surface: `nmap -sV 172.22.4.88`" },
+      { cmd: /^(nikto|wpscan|gobuster|dirb)(\s|$)/, hint: "Enumerate web: `wpscan --url http://172.22.4.88`" },
+      { cmd: /^(msfconsole|searchsploit|curl)(\s|$)/, hint: "Find the exploit. `searchsploit easy-forms`" },
+      { cmd: /^ssh(\s|$)/, hint: "Pivot to a shell: `ssh dev@172.22.4.88`" },
+      { cmd: /^echo\s+.*cleanup\.sh/, hint: "Hijack the cron: `echo 'bash -i' >> /opt/cleanup.sh`" },
+      { cmd: /^cat\s+\/root\/flag/, hint: "Wait for cron, then `cat /root/flag.txt`." }
+    ]
+  },
+  {
+    id: "neonfang",
+    name: "NEONFANG",
+    diff: "HARD",
+    blurb: "Hardened Debian. Custom binary on port 9001.",
+    ip: "192.168.66.13",
+    target: {
+      hostname: "neonfang",
+      ip: "192.168.66.13",
+      os: "Debian 11 (bullseye)",
+      uname: "Linux neonfang 5.10.0-21-amd64 #1 SMP Debian x86_64 GNU/Linux",
+      services: ["22/tcp ssh", "9001/tcp ??? (custom)"],
+      users: ["root", "ops"],
+      intel: [
+        "Binary 'fangd' listens on 9001 — strcpy() on banner string.",
+        "ASLR enabled, NX enabled, no PIE.",
+        "SUID /usr/local/bin/notesctl owned by root."
+      ],
+      flag: "FLAG{r0p_y0ur_w4y_h0me}"
+    },
+    steps: [
+      { cmd: /^nmap(\s|$)/, hint: "Identify the service: `nmap -sV -p 9001 192.168.66.13`" },
+      { cmd: /^(nc|ncat)(\s|$)/, hint: "Touch the service: `nc 192.168.66.13 9001`" },
+      { cmd: /^(gdb|checksec|ROPgadget)(\s|$)/, hint: "Inspect the binary: `checksec fangd`" },
+      { cmd: /^(python|python3|msfvenom)(\s|$)/, hint: "Craft a ROP exploit: `python3 exploit.py`" },
+      { cmd: /^\.\/notesctl/, hint: "SUID misuse: `./notesctl --debug`" },
+      { cmd: /^cat\s+\/root\/flag/, hint: "Grab the flag: `cat /root/flag.txt`." }
+    ]
+  },
+  {
+    id: "voidmoon",
+    name: "VOIDMOON",
+    diff: "INSANE",
+    blurb: "Air-gapped... allegedly. SCADA-adjacent.",
+    ip: "10.99.0.7",
+    target: {
+      hostname: "voidmoon-hmi",
+      ip: "10.99.0.7",
+      os: "Yocto Linux (industrial)",
+      uname: "Linux voidmoon-hmi 4.19.94-yocto #1 SMP armv7l GNU/Linux",
+      services: ["23/tcp telnet (legacy!)", "502/tcp modbus", "8080/tcp http (HMI panel)"],
+      users: ["root", "operator", "engineer"],
+      intel: [
+        "Telnet enabled. Vendor default: operator/operator.",
+        "Modbus has no auth at all. Welcome to OT.",
+        "HMI panel exposes /diag with command injection via 'ping' field."
+      ],
+      flag: "FLAG{th3_l1ghts_g0_0ut_t0n1ght}"
+    },
+    steps: [
+      { cmd: /^nmap(\s|$)/, hint: "Survey the OT net: `nmap -sV 10.99.0.7`" },
+      { cmd: /^telnet(\s|$)/, hint: "Old skool: `telnet 10.99.0.7`" },
+      { cmd: /^curl(\s|$)/, hint: "Touch the HMI: `curl http://10.99.0.7:8080/diag`" },
+      { cmd: /^(python|python3|nc|ncat)(\s|$)/, hint: "Inject via diag: `curl 'http://10.99.0.7:8080/diag?ping=;id'`" },
+      { cmd: /^modbus(\s|$)|^mbtget(\s|$)/, hint: "Speak modbus: `mbtget -r3 -a 1 10.99.0.7`" },
+      { cmd: /^cat\s+\/root\/flag/, hint: "Pop the flag: `cat /root/flag.txt`." }
+    ]
+  },
+  {
+    id: "crypthaven",
+    name: "CRYPTHAVEN",
+    diff: "MEDIUM",
+    blurb: "Stale FTP server. Backup of /etc/shadow lying around.",
+    ip: "10.45.7.21",
+    target: {
+      hostname: "crypthaven-fs",
+      ip: "10.45.7.21",
+      os: "Debian 10 (buster)",
+      uname: "Linux crypthaven-fs 4.19.0-22-amd64 #1 SMP Debian x86_64 GNU/Linux",
+      services: ["21/tcp ftp vsftpd 3.0.3", "22/tcp ssh OpenSSH 7.9", "80/tcp http nginx 1.14"],
+      users: ["root", "backup", "alice"],
+      intel: [
+        "Anonymous FTP enabled; shadow.bak in /pub/.",
+        "User 'alice' password is a common dictionary word (try rockyou.txt).",
+        "alice in sudoers with NOPASSWD /usr/bin/vim — see GTFObins."
+      ],
+      flag: "FLAG{j0hn_kn0ws_y0ur_p4ssw0rd}"
+    },
+    steps: [
+      { cmd: /^nmap(\s|$)/, hint: "Scan target ports: `nmap 10.45.7.21`" },
+      { cmd: /^(ftp|curl|wget)(\s|$)/, hint: "Grab the backup: `ftp 10.45.7.21` then `get pub/shadow.bak`" },
+      { cmd: /^john(\s|$)/, hint: "Crack the hash: `john --wordlist=rockyou.txt shadow.bak`" },
+      { cmd: /^ssh(\s|$)/, hint: "Login as alice with the cracked password: `ssh alice@10.45.7.21`" },
+      { cmd: /^sudo(\s|$)/, hint: "Abuse the sudoers entry: `sudo vim -c ':!/bin/sh'`" },
+      { cmd: /^cat\s+\/root\/flag/, hint: "Grab the flag: `cat /root/flag.txt`" }
+    ]
+  }
+];
+
+/* ===================== STATE ===================== */
+let current = null;     // current level
+let stepIdx = 0;        // current step
+let solved = new Set(); // ids of solved levels
+let isConnected = false;
+let connectedAs = null;
+let isRoot = false;
+let isDevMode = false;       // unlocked by login: admin / 1234
+let loggedInUser = "guest";
+let customLevels = [];       // user-built levels (persisted)
+let hiddenBuiltins = new Set(); // ids of built-in levels the admin deleted
+let builderSteps = [];       // working state for the level builder
+
+const $ = id => document.getElementById(id);
+
+function allLevels() {
+  return LEVELS.filter(L => !hiddenBuiltins.has(L.id)).concat(customLevels);
+}
+function findLevelById(id) { return allLevels().find(L => L.id === id); }
+
+/* ===================== LOBBY ===================== */
+function renderLobby() {
+  const wrap = $("levels");
+  wrap.innerHTML = "";
+  allLevels().forEach(L => {
+    const card = document.createElement("div");
+    card.className = "level-card";
+    const tag = L.custom ? '<span class="custom-tag">CUSTOM</span>' : "";
+    const del = isDevMode ? '<button class="del" data-id="'+L.id+'">DEL</button>' : "";
+    card.innerHTML = `
+      <span class="diff">${L.diff}${solved.has(L.id) ? " ✓" : ""}</span>
+      <h3>// ${L.name}</h3>
+      <p>${escapeHtml(L.blurb)}</p>
+      <div class="ip">target: ${L.ip}</div>
+      ${tag}${del}
+    `;
+    card.addEventListener("click", e => {
+      if (e.target.classList && e.target.classList.contains("del")) {
+        if (!isDevMode) return;
+        if (confirm("Delete level '" + L.name + "'? " + (L.custom ? "(custom level — gone for good)" : "(built-in — hidden until you reset)"))) {
+          deleteAnyLevel(L);
+        }
+        return;
+      }
+      startLevel(L);
+    });
+    wrap.appendChild(card);
+  });
+  // + NEW LEVEL card (admin only)
+  if (isDevMode) {
+    const plus = document.createElement("div");
+    plus.className = "level-card new-card";
+    plus.innerHTML = `<div class="plus">+</div><h3>NEW LEVEL</h3><p>build a custom target</p>`;
+    plus.addEventListener("click", openBuilder);
+    wrap.appendChild(plus);
+    // RESET card (only show if anything was hidden)
+    if (hiddenBuiltins.size) {
+      const reset = document.createElement("div");
+      reset.className = "level-card new-card";
+      reset.style.borderColor = "var(--red)";
+      reset.innerHTML = `<div class="plus" style="color:var(--red)">↻</div><h3 style="color:var(--red)">RESTORE</h3><p style="color:#a55">bring back ${hiddenBuiltins.size} hidden built-in${hiddenBuiltins.size>1?"s":""}</p>`;
+      reset.addEventListener("click", () => {
+        if (confirm("Restore all hidden built-in levels?")) {
+          hiddenBuiltins = new Set();
+          persistHiddenBuiltins();
+          renderLobby();
+        }
+      });
+      wrap.appendChild(reset);
+    }
+  }
+  // user indicator
+  $("userIndicator").textContent = isDevMode
+    ? "// signed in as " + loggedInUser + " · ADMIN"
+    : "// guest mode · read-only · login to manage levels";
+  $("userIndicator").style.color = isDevMode ? "var(--green)" : "#4a8a4a";
+}
+
+function startLevel(L) {
+  current = L;
+  stepIdx = 0;
+  isConnected = false;
+  connectedAs = null;
+  isRoot = false;
+  $("lobby").style.display = "none";
+  $("game").style.display = "block";
+  $("targetTag").textContent = `// ${L.name} :: ${L.ip}`;
+  $("termTitle").textContent = "root@kali: ~";
+  $("term").innerHTML = "";
+  $("answersBtn").style.display = isDevMode ? "inline-block" : "none";
+  updateProgress();
+  banner();
+  $("cmd").focus();
+}
+
+function backToLobby() {
+  $("game").style.display = "none";
+  $("lobby").style.display = "flex";
+  renderLobby();
+}
+
+/* ===================== TERMINAL ===================== */
+function writeLine(text, cls) {
+  const term = $("term");
+  const div = document.createElement("span");
+  div.className = "line" + (cls ? " " + cls : "");
+  div.textContent = text;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+function writeRaw(html) {
+  const term = $("term");
+  const div = document.createElement("span");
+  div.className = "line";
+  div.innerHTML = html;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+function blank() { writeLine(" "); }
+
+async function typeLines(arr, delay=18) {
+  for (const item of arr) {
+    if (typeof item === "string") writeLine(item);
+    else writeLine(item.text, item.cls);
+    await sleep(delay);
+  }
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function banner() {
+  writeLine("┌──(root㉿kali)-[~]");
+  writeLine("└─# session started // " + new Date().toISOString());
+  writeLine("");
+  writeLine("Kali GNU/Linux Rolling — simulation build", "dim");
+  writeLine("Type `help` for commands. Click [ NOTES ] for target intel.", "dim");
+  writeLine("Target acquired: " + current.target.hostname + " (" + current.target.ip + ")", "warn");
+  blank();
+}
+
+/* ===================== COMMAND ENGINE ===================== */
+const HELP_TEXT = [
+  "available simulated commands:",
+  "  help                 show this list",
+  "  clear                clear screen",
+  "  notes                open target notes",
+  "  hint                 reveal next hint",
+  "  whoami / id / uname  basic recon on your box",
+  "  ifconfig / ip a      show your interfaces",
+  "  ls / pwd / cat       file ops (simulated)",
+  "  nmap <ip>            port scan target",
+  "  nikto -h <url>       web vuln scan",
+  "  gobuster dir -u ...  directory brute force",
+  "  wpscan --url <url>   wordpress audit",
+  "  searchsploit <q>     local exploit db",
+  "  hydra -l u -P f svc  brute force creds",
+  "  john <hashfile>      crack passwords (John the Ripper)",
+  "  ftp <ip>             connect to ftp (anon supported)",
+  "  ssh user@ip          ssh into target",
+  "  telnet ip            telnet into target",
+  "  nc / ncat ip port    netcat to service",
+  "  curl <url>           fetch resource",
+  "  msfconsole           launch metasploit",
+  "  checksec / gdb       binary inspection",
+  "  sudo -l / sudo su    privilege escalation",
+  "  exit                 leave a session",
+  "",
+  "tip: complete the steps listed in NOTES to PWN the target."
+];
+
+function commandPrompt() {
+  if (isConnected) {
+    const user = connectedAs || "operator";
+    const host = current.target.hostname;
+    const root = isRoot ? "#" : "$";
+    return `${user}@${host}:~${root} `;
+  }
+  return "root@kali:~# ";
+}
+
+function handleCommand(raw) {
+  const line = raw.trim();
+  if (!line) { writeRaw('<span class="prompt"><span class="user">' + (isConnected? (connectedAs||"op"):"root") + '</span>@<span class="host">' + (isConnected? current.target.hostname:"kali") + '</span>:~' + (isConnected? (isRoot?"#":"$"):"#") + '</span>'); return; }
+  // echo the command in the scrollback
+  echoCmd(line);
+
+  const argv = line.split(/\s+/);
+  const cmd = argv[0].toLowerCase();
+
+  // local-box commands when not connected, but most are allowed anywhere
+  switch (cmd) {
+    case "help": case "?": typeLines(HELP_TEXT); break;
+    case "clear": case "cls": $("term").innerHTML = ""; break;
+    case "notes": openNotes(); break;
+    case "hint": showHint(); break;
+    case "exit": case "logout":
+      if (isConnected) { isConnected=false; connectedAs=null; isRoot=false; writeLine("Connection to " + current.target.ip + " closed.", "dim"); }
+      else { writeLine("Already at top shell. Use `< LOBBY` to leave.", "dim"); }
+      break;
+    case "whoami":
+      writeLine(isConnected ? (connectedAs || "operator") : "root"); break;
+    case "id":
+      if (isConnected && isRoot) writeLine("uid=0(root) gid=0(root) groups=0(root)");
+      else if (isConnected) writeLine("uid=1000(" + (connectedAs||"user") + ") gid=1000 groups=1000");
+      else writeLine("uid=0(root) gid=0(root) groups=0(root)");
+      break;
+    case "uname":
+      if (isConnected) writeLine(current.target.uname);
+      else writeLine("Linux kali 6.5.0-kali3-amd64 #1 SMP PREEMPT_DYNAMIC Kali x86_64 GNU/Linux");
+      break;
+    case "ifconfig": case "ip":
+      writeLine("eth0: inet 10.10.0.66 netmask 255.255.0.0  ether 0c:1d:e5:de:ad:01");
+      writeLine("tun0: inet 10.10.13.5  netmask 255.255.255.0  HTBnet");
+      break;
+    case "pwd":
+      writeLine(isConnected ? "/home/" + (connectedAs||"user") : "/root"); break;
+    case "ls":
+      if (isConnected) writeLine(".bashrc  notes.txt  loot/  scripts/");
+      else writeLine("exploits  loot  notes  wordlists  rockyou.txt  tools");
+      break;
+    case "cat": doCat(argv.slice(1).join(" ")); break;
+    case "nmap": doNmap(argv); break;
+    case "nikto": doNikto(argv); break;
+    case "gobuster": case "dirb": case "feroxbuster": doDir(argv); break;
+    case "wpscan": doWpscan(argv); break;
+    case "searchsploit": doSearchsploit(argv); break;
+    case "hydra": doHydra(argv); break;
+    case "john": doJohn(argv); break;
+    case "ftp": doFtp(argv); break;
+    case "ssh": doSsh(argv); break;
+    case "telnet": doTelnet(argv); break;
+    case "nc": case "ncat": doNc(argv); break;
+    case "curl": case "wget": doCurl(argv); break;
+    case "msfconsole": doMsf(); break;
+    case "checksec": case "gdb": case "ropgadget": case "objdump": doBin(argv); break;
+    case "python": case "python3": case "msfvenom": doExploit(argv); break;
+    case "sudo": doSudo(argv); break;
+    case "su": doSu(argv); break;
+    case "mbtget": case "modbus": doModbus(argv); break;
+    case "echo": doEcho(line); break;
+    case "./notesctl": case "notesctl": doNotesctl(argv); break;
+    case "rm": case "mv": case "cp": case "chmod": writeLine(cmd + ": permission denied (sandboxed)", "dim"); break;
+    default:
+      writeLine("zsh: command not found: " + cmd, "bad");
+      writeLine("try `help` for the supported toolset.", "dim");
+  }
+
+  // step matching
+  matchStep(line);
+}
+
+function echoCmd(line) {
+  const prefix = isConnected
+    ? `<span style="color:#9ad99a">${connectedAs || "op"}</span>@<span style="color:#39ff14">${current.target.hostname}</span>:~<span style="color:#ffb000">${isRoot?"#":"$"}</span>&nbsp;`
+    : `<span style="color:#39ff14">root</span>@<span style="color:#39ff14">kali</span>:<span style="color:#9ad99a">~</span><span style="color:#ffb000">#</span>&nbsp;`;
+  writeRaw(prefix + escapeHtml(line));
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* ---------- command implementations ---------- */
+async function doNmap(argv) {
+  const ip = argv.find(a => /^\d+\.\d+\.\d+\.\d+$/.test(a)) || current.target.ip;
+  if (ip !== current.target.ip) { writeLine("Nmap scan report for " + ip + " — host seems down.", "dim"); return; }
+  writeLine("Starting Nmap 7.94 ( https://nmap.org )", "dim");
+  await sleep(120);
+  writeLine("Nmap scan report for " + current.target.hostname + " (" + current.target.ip + ")");
+  writeLine("Host is up (0.013s latency).");
+  writeLine("PORT     STATE SERVICE   VERSION");
+  for (const s of current.target.services) writeLine(s);
+  writeLine("Service detection performed. Nmap done.", "dim");
+}
+
+async function doNikto(argv) {
+  writeLine("- Nikto v2.5.0  Target: " + (argv[2] || ("http://" + current.target.ip)), "dim");
+  await sleep(180);
+  writeLine("+ Server: " + (current.target.services.find(s=>/http|nginx|apache/i.test(s))||"unknown"));
+  writeLine("+ /admin/: Admin login page found", "warn");
+  writeLine("+ /backup.zip: backup file exposed (!)", "warn");
+  writeLine("+ Cookie not flagged HttpOnly.", "dim");
+}
+
+async function doDir(argv) {
+  writeLine("===============================================================", "dim");
+  writeLine("Gobuster v3.6", "dim");
+  writeLine("===============================================================", "dim");
+  await sleep(200);
+  const found = ["/admin (Status: 200)", "/login (Status: 200)", "/backup.zip (Status: 200)", "/.git/ (Status: 403)", "/diag (Status: 200)"];
+  for (const f of found) { writeLine(f); await sleep(60); }
+  writeLine("Finished.", "dim");
+}
+
+async function doWpscan(argv) {
+  writeLine("[+] URL: " + (argv.find(a=>a.startsWith("http"))||"http://"+current.target.ip), "dim");
+  await sleep(150);
+  writeLine("[+] WordPress version 5.7 identified");
+  writeLine("[+] Plugin: easy-forms 1.2.3", "warn");
+  writeLine("    | CVE-2021-FAKE: unauth RCE via 'render' param", "bad");
+  writeLine("[+] Users found: wp_user, admin", "warn");
+}
+
+async function doSearchsploit(argv) {
+  const q = argv.slice(1).join(" ") || "";
+  writeLine("--------------------------------------------------- ----------");
+  writeLine(" Exploit Title                                       Path");
+  writeLine("--------------------------------------------------- ----------");
+  await sleep(120);
+  const rows = {
+    "easy-forms": [["WordPress easy-forms 1.2.3 - Unauth RCE", "php/webapps/52000.py"]],
+    "openssh 7.4": [["OpenSSH 7.4 - User Enumeration", "linux/remote/45233.py"]],
+    "apache 2.4.29": [["Apache 2.4.29 - mod_status info leak", "linux/webapps/44849.txt"]],
+    "easy": [["WordPress easy-forms 1.2.3 - Unauth RCE", "php/webapps/52000.py"]]
+  };
+  let hits = [];
+  for (const k in rows) if (q.toLowerCase().includes(k.split(" ")[0])) hits = hits.concat(rows[k]);
+  if (!hits.length) hits = [["No results for '"+q+"'", "-"]];
+  for (const [t,p] of hits) writeLine(" " + t.padEnd(52) + p);
+  writeLine("--------------------------------------------------- ----------");
+}
+
+async function doHydra(argv) {
+  writeLine("Hydra v9.5 starting at " + new Date().toLocaleTimeString(), "dim");
+  await sleep(200);
+  writeLine("[DATA] attacking ssh://" + current.target.ip + ":22");
+  for (let i=0;i<4;i++) { writeLine("[ATTEMPT] login \"admin\" - pass \"" + ["12345","letmein","qwerty","password"][i] + "\""); await sleep(120); }
+  writeLine("[22][ssh] host: " + current.target.ip + "   login: admin   password: password123", "ok");
+  writeLine("1 of 1 target successfully completed", "ok");
+}
+
+async function doJohn(argv) {
+  const target = argv.slice(1).find(a => !a.startsWith("-")) || "shadow.bak";
+  writeLine("John the Ripper 1.9.0-jumbo-1+omp [linux-gnu 64-bit AVX-AC]", "dim");
+  await sleep(120);
+  writeLine("Using default input encoding: UTF-8");
+  writeLine("Loaded 1 password hash (sha512crypt, crypt(3) $6$ [SHA512 256/256 AVX 4x])");
+  writeLine("Will run 4 OpenMP threads");
+  writeLine("Press 'q' or Ctrl-C to abort, almost any other key for status", "dim");
+  await sleep(260);
+  // tick through some near-misses
+  const tries = ["password", "letmein", "qwerty", "iloveyou", "monkey"];
+  for (const t of tries) { writeLine("  trying: " + t, "dim"); await sleep(100); }
+  await sleep(140);
+  writeLine("hunter2          (alice)", "ok");
+  writeLine("1g 0:00:00:04 DONE (rockyou) — 0.23g/s 245Kp/s 245Kc/s", "ok");
+  writeLine("Use the \"--show\" option to display all of the cracked passwords reliably", "dim");
+  writeLine("Session completed.", "dim");
+  writeLine("// cracked: alice : hunter2  (from " + target + ")", "warn");
+}
+
+async function doFtp(argv) {
+  const host = argv[1];
+  if (!host) { writeLine("usage: ftp <host>", "dim"); return; }
+  if (host !== current.target.ip) { writeLine("ftp: connect: Connection refused", "bad"); return; }
+  writeLine("Connected to " + host + ".");
+  writeLine("220 (vsFTPd 3.0.3)");
+  writeLine("Name (" + host + ":root): anonymous");
+  await sleep(100);
+  writeLine("331 Please specify the password.");
+  writeLine("Password: ");
+  writeLine("230 Login successful.", "ok");
+  writeLine("Remote system type is UNIX.");
+  writeLine("ftp> ls pub/");
+  await sleep(120);
+  writeLine("-rw-r--r--   1 ftp ftp          892 shadow.bak");
+  writeLine("-rw-r--r--   1 ftp ftp          120 README");
+  writeLine("ftp> get pub/shadow.bak");
+  await sleep(150);
+  writeLine("local: shadow.bak  remote: pub/shadow.bak");
+  writeLine("226 Transfer complete.", "ok");
+  writeLine("892 bytes received in 0.01 secs", "ok");
+  writeLine("ftp> bye");
+  writeLine("221 Goodbye.", "dim");
+  writeLine("// shadow.bak saved locally — now run `john shadow.bak`", "warn");
+}
+
+function doSsh(argv) {
+  const m = (argv[1]||"").match(/^([^@]+)@([\d\.]+)$/);
+  if (!m) { writeLine("usage: ssh user@host", "dim"); return; }
+  const user = m[1], host = m[2];
+  if (host !== current.target.ip) { writeLine("ssh: connect to host " + host + " port 22: No route to host", "bad"); return; }
+  if (!current.target.users.includes(user) && user !== "admin") {
+    writeLine(user + "@" + host + ": Permission denied (publickey,password).", "bad"); return;
+  }
+  writeLine("The authenticity of host '" + host + "' can't be established.", "dim");
+  writeLine("ECDSA key fingerprint is SHA256:" + Math.random().toString(36).slice(2,18));
+  writeLine(user + "@" + host + "'s password: ********");
+  writeLine("Welcome to " + current.target.os, "ok");
+  writeLine("Last login: " + new Date().toUTCString(), "dim");
+  isConnected = true; connectedAs = user; isRoot = (user === "root");
+  $("termTitle").textContent = user + "@" + current.target.hostname + ": ~";
+}
+
+function doTelnet(argv) {
+  const host = argv[1];
+  if (host !== current.target.ip) { writeLine("telnet: could not resolve " + host, "bad"); return; }
+  writeLine("Trying " + host + "...");
+  writeLine("Connected to " + host + ".");
+  writeLine("Escape character is '^]'.");
+  writeLine(current.target.hostname + " login: operator");
+  writeLine("Password: ********");
+  writeLine("Last login: " + new Date().toUTCString(), "dim");
+  isConnected = true; connectedAs = "operator"; isRoot = false;
+  $("termTitle").textContent = "operator@" + current.target.hostname + ": ~";
+}
+
+async function doNc(argv) {
+  const host = argv[argv.length-2], port = argv[argv.length-1];
+  if (host !== current.target.ip) { writeLine("(UNKNOWN) [" + host + "] " + port + " (?) : Connection refused", "bad"); return; }
+  if (port === "9001") {
+    writeLine("FANGD v0.4 — welcome operator", "ok");
+    writeLine("BANNER>"); await sleep(120);
+    writeLine("(buffer overrun detected in libfang)", "warn");
+  } else {
+    writeLine("(connected to " + host + ":" + port + ")");
+  }
+}
+
+async function doCurl(argv) {
+  const url = argv.find(a => a.startsWith("http")) || "";
+  if (!url) { writeLine("curl: try `curl http://host[/path]`", "dim"); return; }
+  if (!url.includes(current.target.ip)) { writeLine("curl: (7) Failed to connect", "bad"); return; }
+  if (url.includes("/diag")) {
+    if (url.includes(";")) {
+      writeLine("<html><body><pre>PING 10.99.0.7: 64 bytes from 10.99.0.7 time=0.1ms");
+      writeLine("uid=0(root) gid=0(root) groups=0(root)</pre></body></html>", "ok");
+      writeLine("// command injection successful — root context", "ok");
+    } else {
+      writeLine("<form action=/diag method=GET>ping <input name=ping></form>");
+    }
+  } else if (url.includes("/admin")) {
+    writeLine("HTTP/1.1 401 Unauthorized");
+    writeLine("WWW-Authenticate: Basic realm=\"Admin\"", "warn");
+  } else {
+    writeLine("<!doctype html><html><title>" + current.target.hostname + "</title></html>");
+  }
+}
+
+async function doMsf() {
+  writeLine("       =[ metasploit v6.4 ]");
+  writeLine("+ -- --=[ 2400 exploits - 1240 auxiliary ]", "dim");
+  writeLine("msf6 > use exploit/multi/http/easy_forms_rce", "ok");
+  await sleep(180);
+  writeLine("msf6 exploit(easy_forms_rce) > set RHOSTS " + current.target.ip);
+  writeLine("msf6 exploit(easy_forms_rce) > exploit");
+  writeLine("[*] Sending stage (200774 bytes)...", "dim");
+  await sleep(200);
+  writeLine("[*] Meterpreter session 1 opened (10.10.0.66:4444 -> " + current.target.ip + ")", "ok");
+  writeLine("meterpreter > getuid");
+  writeLine("Server username: www-data");
+}
+
+async function doBin(argv) {
+  writeLine("[*] checksec fangd", "dim");
+  await sleep(120);
+  writeLine("  Arch:     amd64-64-little");
+  writeLine("  RELRO:    Partial RELRO");
+  writeLine("  Stack:    No canary found", "warn");
+  writeLine("  NX:       NX enabled");
+  writeLine("  PIE:      No PIE (0x400000)", "warn");
+  writeLine("  ASLR:     Enabled");
+}
+
+async function doExploit(argv) {
+  writeLine("[+] crafting payload...", "dim");
+  await sleep(200);
+  writeLine("[+] leaking libc... 0x7ffff7a0d000", "dim");
+  writeLine("[+] system() @ 0x7ffff7a51390", "dim");
+  writeLine("[+] /bin/sh @ 0x7ffff7b97d57", "dim");
+  writeLine("[+] sending ROP chain (224 bytes)", "ok");
+  await sleep(150);
+  writeLine("[+] shell incoming...", "ok");
+  isConnected = true; connectedAs = "root"; isRoot = true;
+  $("termTitle").textContent = "root@" + current.target.hostname + ": ~";
+}
+
+function doSudo(argv) {
+  if (!isConnected) { writeLine("sudo: cannot run on local kali (already root)", "dim"); return; }
+  if (argv[1] === "-l") {
+    writeLine("Matching Defaults entries for " + connectedAs);
+    writeLine("User " + connectedAs + " may run the following commands:");
+    writeLine("    (root) NOPASSWD: /usr/bin/find", "warn");
+    return;
+  }
+  if (argv[1] === "su" || (argv[1] === "-i")) {
+    writeLine("[sudo] password for " + connectedAs + ": ********");
+    writeLine("# privilege escalated", "ok");
+    isRoot = true;
+    $("termTitle").textContent = "root@" + current.target.hostname + ": ~";
+    return;
+  }
+  writeLine("usage: sudo -l | sudo su | sudo -i", "dim");
+}
+function doSu(argv) {
+  if (!isConnected) { writeLine("su: must be on target", "dim"); return; }
+  writeLine("Password: ********");
+  writeLine("# elevated", "ok");
+  isRoot = true;
+  $("termTitle").textContent = "root@" + current.target.hostname + ": ~";
+}
+
+function doModbus(argv) {
+  writeLine("modbus tcp -> " + current.target.ip + ":502", "dim");
+  writeLine("values: [coil0=1, coil1=0, holding0=4096, holding1=0x4141]");
+  writeLine("// no auth required. that's not a bug, that's modbus.", "warn");
+}
+
+function doEcho(line) {
+  // capture redirects, but mostly just print
+  const m = line.match(/^echo\s+(.+?)(?:\s*>>?\s*(\S+))?$/);
+  if (!m) { writeLine(""); return; }
+  if (m[2]) {
+    if (m[2].includes("cleanup.sh")) {
+      writeLine("// payload appended to " + m[2], "ok");
+      writeLine("// waiting for cron... 5 minutes... (skipping)", "dim");
+      isRoot = true;
+      if (!isConnected) { isConnected = true; connectedAs = "root"; }
+      $("termTitle").textContent = "root@" + current.target.hostname + ": ~";
+      writeLine("# cron fired. root shell.", "ok");
+    } else {
+      writeLine("// wrote to " + m[2], "dim");
+    }
+  } else {
+    writeLine(m[1].replace(/^["']|["']$/g, ""));
+  }
+}
+
+function doNotesctl(argv) {
+  if (!isConnected) { writeLine("./notesctl: No such file (you're on kali)", "bad"); return; }
+  if (argv.includes("--debug")) {
+    writeLine("notesctl: debug mode enabled");
+    writeLine("notesctl: dropping to interactive shell as owner...", "warn");
+    isRoot = true;
+    $("termTitle").textContent = "root@" + current.target.hostname + ": ~";
+    writeLine("# root via SUID abuse", "ok");
+  } else {
+    writeLine("usage: notesctl [--debug] [--list]");
+  }
+}
+
+function doCat(arg) {
+  if (!arg) { writeLine("cat: missing operand", "dim"); return; }
+  if (arg.includes("flag")) {
+    if (!isConnected) { writeLine("cat: " + arg + ": No such file or directory", "bad"); return; }
+    if (!isRoot && arg.startsWith("/root")) { writeLine("cat: " + arg + ": Permission denied", "bad"); return; }
+    writeLine(current.target.flag, "ok");
+    pwn();
+    return;
+  }
+  if (arg === "notes.txt" && isConnected) {
+    writeLine("- finish the backup script");
+    writeLine("- rotate creds (TODO since 2021)");
+    writeLine("- " + current.target.intel[0]);
+    return;
+  }
+  writeLine("cat: " + arg + ": No such file or directory", "bad");
+}
+
+/* ===================== STEP ENGINE ===================== */
+function matchStep(line) {
+  if (!current) return;
+  const step = current.steps[stepIdx];
+  if (!step) return;
+  if (step.cmd.test(line)) {
+    stepIdx++;
+    updateProgress();
+    if (stepIdx >= current.steps.length) {
+      // user already gets pwn via cat /root/flag, but fallback:
+      // nothing else here
+    } else {
+      writeLine("// step " + stepIdx + "/" + current.steps.length + " complete. next: " + nextHintShort(), "ok");
+    }
+  }
+}
+function nextHintShort() {
+  const s = current.steps[stepIdx];
+  return s ? s.hint.split(".")[0] : "extract the flag.";
+}
+function updateProgress() {
+  $("progress").textContent = "[" + stepIdx + "/" + current.steps.length + " objectives]";
+}
+
+function showHint() {
+  if (!current) return;
+  const s = current.steps[stepIdx];
+  if (!s) { writeLine("// no more hints — you're at the goal.", "ok"); return; }
+  writeLine("// HINT: " + s.hint, "warn");
+}
+
+/* ===================== NOTES MODAL ===================== */
+function openNotes() {
+  const t = current.target;
+  $("notesContent").innerHTML = `
+    <h4>// FIELD INTEL</h4>
+    <div><b>hostname:</b> <code>${t.hostname}</code></div>
+    <div><b>ip:</b> <code>${t.ip}</code></div>
+    <div><b>os:</b> <code>${t.os}</code></div>
+    <div><b>uname -a:</b> <code>${t.uname}</code></div>
+    <h4>// OPEN SERVICES</h4>
+    <ul>${t.services.map(s=>"<li><code>"+s+"</code></li>").join("")}</ul>
+    <h4>// KNOWN USERS</h4>
+    <div>${t.users.map(u=>"<code>"+u+"</code>").join("  ")}</div>
+    <h4>// LEAKED INTEL</h4>
+    <ul>${t.intel.map(i=>"<li>"+i+"</li>").join("")}</ul>
+    <h4>// OBJECTIVES (${stepIdx}/${current.steps.length})</h4>
+    <ol>${current.steps.map((s,i)=>"<li style='color:"+(i<stepIdx?"#6cff6c":"#9ad99a")+"'>"+(i<stepIdx?"✓ ":"")+s.hint+"</li>").join("")}</ol>
+  `;
+  $("notesModal").classList.add("show");
+}
+function closeNotes(){ $("notesModal").classList.remove("show"); }
+
+/* ===================== PWN ===================== */
+function pwn() {
+  solved.add(current.id);
+  $("pwnedSub").textContent = "root shell acquired // " + current.target.hostname;
+  $("pwned").classList.add("show");
+}
+function dismissPwn() {
+  if (!$("pwned").classList.contains("show")) return;
+  $("pwned").classList.remove("show");
+  backToLobby();
+}
+
+/* ===================== LOGIN / DEV MODE ===================== */
+function attemptLogin() {
+  const u = $("loginUser").value.trim();
+  const p = $("loginPass").value;
+  if (u === "admin" && p === "1234") {
+    isDevMode = true;
+    loggedInUser = u;
+    $("loginStatus").textContent = "// ADMIN ACCESS GRANTED — answer key + builder unlocked";
+    $("loginStatus").className = "login-status ok";
+    $("devBadge").classList.add("show");
+    setTimeout(closeLogin, 650);
+  } else if (!u || !p) {
+    $("loginStatus").textContent = "// supply username and password";
+    $("loginStatus").className = "login-status bad";
+  } else {
+    isDevMode = false;
+    loggedInUser = u;
+    $("loginStatus").textContent = "// access denied — guest privileges only";
+    $("loginStatus").className = "login-status bad";
+    setTimeout(closeLogin, 800);
+  }
+}
+function loginAsGuest() {
+  isDevMode = false;
+  loggedInUser = "guest";
+  closeLogin();
+}
+function closeLogin() {
+  $("login").style.display = "none";
+  $("loginPass").value = "";
+  renderLobby();
+}
+function openLogin() {
+  $("login").style.display = "flex";
+  $("loginStatus").textContent = "awaiting credentials...";
+  $("loginStatus").className = "login-status";
+  $("loginUser").value = "";
+  $("loginPass").value = "";
+  $("loginUser").focus();
+}
+
+/* ===================== ANSWERS (DEV) ===================== */
+function openAnswers() {
+  if (!current) return;
+  const t = current.target;
+  const html = `
+    <h4>// TARGET</h4>
+    <div>Hostname: <code>${escapeHtml(t.hostname)}</code> · IP: <code>${escapeHtml(t.ip)}</code></div>
+    <h4>// FLAG</h4>
+    <div class="ans-flag">${escapeHtml(t.flag)}</div>
+    <h4>// STEP-BY-STEP SOLUTION</h4>
+    ${current.steps.map((s,i) => `
+      <div class="ans-step">
+        <b style="color:${i<stepIdx?'#6cff6c':'var(--amber)'}">${i+1}.${i<stepIdx?' ✓':''}</b>
+        ${escapeHtml(s.hint)}
+        <div class="ans-rx">regex: <code>${escapeHtml(s.cmd.source)}</code></div>
+      </div>
+    `).join("")}
+  `;
+  $("answersContent").innerHTML = html;
+  $("answersModal").classList.add("show");
+}
+function closeAnswers() { $("answersModal").classList.remove("show"); }
+
+/* ===================== CUSTOM LEVELS / BUILDER ===================== */
+function persistCustomLevels() {
+  const serial = customLevels.map(L => ({
+    ...L,
+    steps: L.steps.map(s => ({ cmd: s._src || s.cmd.source, hint: s.hint }))
+  }));
+  localStorage.setItem("k4li_custom_levels", JSON.stringify(serial));
+}
+function loadCustomLevels() {
+  try {
+    const raw = localStorage.getItem("k4li_custom_levels");
+    if (!raw) return;
+    const arr = JSON.parse(raw);
+    customLevels = arr.map(L => ({
+      ...L,
+      steps: L.steps.map(s => ({ cmd: new RegExp(s.cmd), hint: s.hint, _src: s.cmd }))
+    }));
+  } catch(e) { customLevels = []; }
+}
+function deleteCustomLevel(id) {
+  customLevels = customLevels.filter(L => L.id !== id);
+  persistCustomLevels();
+  renderLobby();
+}
+function persistHiddenBuiltins() {
+  localStorage.setItem("k4li_hidden_builtins", JSON.stringify([...hiddenBuiltins]));
+}
+function loadHiddenBuiltins() {
+  try {
+    const raw = localStorage.getItem("k4li_hidden_builtins");
+    if (raw) hiddenBuiltins = new Set(JSON.parse(raw));
+  } catch(e) { hiddenBuiltins = new Set(); }
+}
+function deleteAnyLevel(L) {
+  if (L.custom) {
+    deleteCustomLevel(L.id);
+  } else {
+    hiddenBuiltins.add(L.id);
+    persistHiddenBuiltins();
+    renderLobby();
+  }
+}
+
+function openBuilder() {
+  if (!isDevMode) {
+    alert("Only admin can create levels. Login with admin / 1234.");
+    return;
+  }
+  $("bd_id").value = "";
+  $("bd_name").value = "";
+  $("bd_diff").value = "EASY";
+  $("bd_color").value = "green";
+  $("bd_blurb").value = "";
+  $("bd_ip").value = "";
+  $("bd_hostname").value = "";
+  $("bd_os").value = "Ubuntu 22.04";
+  $("bd_uname").value = "";
+  $("bd_flag").value = "";
+  $("bd_services").value = "";
+  $("bd_users").value = "";
+  $("bd_intel").value = "";
+  $("bd_pwn").value = "";
+  builderSteps = [{ cmd: "^nmap(\\s|$)", hint: "Scan the target." }];
+  renderBuilderSteps();
+  $("builderStatus").textContent = "";
+  $("builderModal").classList.add("show");
+}
+function closeBuilder() { $("builderModal").classList.remove("show"); }
+
+function renderBuilderSteps() {
+  const wrap = $("bd_steps");
+  wrap.innerHTML = "";
+  builderSteps.forEach((s, i) => {
+    const row = document.createElement("div");
+    row.className = "step-row";
+    const cmdI = document.createElement("input");
+    cmdI.value = s.cmd || "";
+    cmdI.placeholder = "^nmap(\\s|$)";
+    cmdI.addEventListener("input", e => builderSteps[i].cmd = e.target.value);
+    const hintI = document.createElement("input");
+    hintI.value = s.hint || "";
+    hintI.placeholder = "Scan the target...";
+    hintI.addEventListener("input", e => builderSteps[i].hint = e.target.value);
+    const btn = document.createElement("button");
+    btn.className = "x"; btn.textContent = "×";
+    btn.addEventListener("click", () => { builderSteps.splice(i,1); renderBuilderSteps(); });
+    row.appendChild(cmdI); row.appendChild(hintI); row.appendChild(btn);
+    wrap.appendChild(row);
+  });
+}
+
+const BUILDER_TEMPLATES = {
+  web_rce: {
+    diff: "MEDIUM", color: "green",
+    services: ["22/tcp ssh OpenSSH 8.4", "80/tcp http nginx 1.18", "443/tcp https nginx 1.18"],
+    users: ["root", "www-data", "deploy"],
+    intel: [
+      "Site running outdated CMS with known RCE.",
+      "/admin login does not rate limit.",
+      "deploy user can sudo restart nginx."
+    ],
+    steps: [
+      { cmd: "^nmap(\\s|$)", hint: "Scan: `nmap -sV <ip>`" },
+      { cmd: "^(nikto|gobuster|dirb)(\\s|$)", hint: "Enumerate web: `gobuster dir -u http://<ip>`" },
+      { cmd: "^(curl|msfconsole)(\\s|$)", hint: "Trigger RCE via vulnerable endpoint." },
+      { cmd: "^ssh(\\s|$)", hint: "Pivot via creds you found." },
+      { cmd: "^sudo(\\s|$)", hint: "Use sudo abuse for root." },
+      { cmd: "^cat\\s+\\/root\\/flag", hint: "Read /root/flag.txt" }
+    ]
+  },
+  ssh_brute: {
+    diff: "EASY", color: "green",
+    services: ["22/tcp ssh OpenSSH 7.6p1"],
+    users: ["root", "admin"],
+    intel: [
+      "Admin reuses common passwords.",
+      "No fail2ban installed (yet)."
+    ],
+    steps: [
+      { cmd: "^nmap(\\s|$)", hint: "Scan: `nmap <ip>`" },
+      { cmd: "^hydra(\\s|$)", hint: "Bruteforce: `hydra -l admin -P rockyou.txt ssh://<ip>`" },
+      { cmd: "^ssh(\\s|$)", hint: "Log in with the cracked password." },
+      { cmd: "^sudo(\\s|$)", hint: "Escalate to root." },
+      { cmd: "^cat\\s+\\/root\\/flag", hint: "Capture the flag." }
+    ]
+  },
+  hash_crack: {
+    diff: "MEDIUM", color: "amber",
+    services: ["21/tcp ftp vsftpd 3.0.3", "22/tcp ssh OpenSSH 7.9"],
+    users: ["root", "alice"],
+    intel: [
+      "Anonymous FTP leaks shadow.bak.",
+      "Password from rockyou.txt should work.",
+      "alice has sudo NOPASSWD on /usr/bin/vim — GTFObins."
+    ],
+    steps: [
+      { cmd: "^nmap(\\s|$)", hint: "Scan ports." },
+      { cmd: "^(ftp|curl|wget)(\\s|$)", hint: "Grab shadow.bak via anon FTP." },
+      { cmd: "^john(\\s|$)", hint: "Crack: `john --wordlist=rockyou.txt shadow.bak`" },
+      { cmd: "^ssh(\\s|$)", hint: "Login with cracked creds." },
+      { cmd: "^sudo(\\s|$)", hint: "Escalate via vim GTFObin." },
+      { cmd: "^cat\\s+\\/root\\/flag", hint: "Capture the flag." }
+    ]
+  },
+  bin_exploit: {
+    diff: "HARD", color: "red",
+    services: ["22/tcp ssh", "9001/tcp custom-binary"],
+    users: ["root", "ops"],
+    intel: [
+      "Custom binary on 9001 has stack overflow.",
+      "No PIE, partial RELRO, ASLR on.",
+      "SUID helper owned by root."
+    ],
+    steps: [
+      { cmd: "^nmap(\\s|$)", hint: "Identify the service." },
+      { cmd: "^(nc|ncat)(\\s|$)", hint: "Touch the service." },
+      { cmd: "^(checksec|gdb|ROPgadget)(\\s|$)", hint: "Inspect binary protections." },
+      { cmd: "^(python|python3)(\\s|$)", hint: "Craft and deliver exploit." },
+      { cmd: "^cat\\s+\\/root\\/flag", hint: "Capture the flag." }
+    ]
+  },
+  ot_scada: {
+    diff: "INSANE", color: "amber",
+    services: ["23/tcp telnet", "502/tcp modbus", "8080/tcp http hmi"],
+    users: ["root", "operator"],
+    intel: [
+      "Telnet with default creds.",
+      "Modbus no auth.",
+      "HMI panel command injection via 'ping' field."
+    ],
+    steps: [
+      { cmd: "^nmap(\\s|$)", hint: "Survey OT services." },
+      { cmd: "^telnet(\\s|$)", hint: "Old-school login." },
+      { cmd: "^curl(\\s|$)", hint: "Probe the HMI." },
+      { cmd: "^(modbus|mbtget)(\\s|$)", hint: "Speak modbus." },
+      { cmd: "^cat\\s+\\/root\\/flag", hint: "Capture the flag." }
+    ]
+  },
+  clear: { clear: true }
+};
+
+function applyBuilderTemplate(name) {
+  const T = BUILDER_TEMPLATES[name];
+  if (!T) return;
+  if (T.clear) {
+    $("bd_services").value = "";
+    $("bd_users").value = "";
+    $("bd_intel").value = "";
+    builderSteps = [];
+    renderBuilderSteps();
+    return;
+  }
+  if (T.diff) $("bd_diff").value = T.diff;
+  if (T.color) $("bd_color").value = T.color;
+  if (T.services) $("bd_services").value = T.services.join("\n");
+  if (T.users) $("bd_users").value = T.users.join("\n");
+  if (T.intel) $("bd_intel").value = T.intel.join("\n");
+  if (T.steps) {
+    builderSteps = T.steps.map(s => ({ cmd: s.cmd, hint: s.hint }));
+    renderBuilderSteps();
+  }
+}
+
+function saveBuilderLevel() {
+  const id = ($("bd_id").value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"");
+  const name = $("bd_name").value.trim();
+  const ip = $("bd_ip").value.trim();
+  const flag = $("bd_flag").value.trim();
+  const status = $("builderStatus");
+  status.style.color = "var(--red)";
+  if (!id) { status.textContent = "// missing required: id"; return; }
+  if (!name) { status.textContent = "// missing required: name"; return; }
+  if (!ip) { status.textContent = "// missing required: ip"; return; }
+  if (!flag) { status.textContent = "// missing required: flag"; return; }
+  if (allLevels().some(L => L.id === id)) { status.textContent = "// id already in use"; return; }
+  const steps = [];
+  for (const s of builderSteps) {
+    if (!s.cmd || !s.hint) continue;
+    try { new RegExp(s.cmd); }
+    catch(e) { status.textContent = "// invalid regex: " + s.cmd; return; }
+    steps.push({ cmd: new RegExp(s.cmd), hint: s.hint, _src: s.cmd });
+  }
+  if (!steps.length) { status.textContent = "// at least one valid step required"; return; }
+  const hostname = $("bd_hostname").value.trim() || (id + "-host");
+  const L = {
+    id, name: name.toUpperCase(),
+    diff: $("bd_diff").value,
+    blurb: $("bd_blurb").value.trim() || "Custom level.",
+    ip,
+    custom: true,
+    color: $("bd_color").value || "green",
+    pwnMessage: $("bd_pwn").value.trim() || null,
+    target: {
+      hostname, ip,
+      os: $("bd_os").value.trim() || "Ubuntu 22.04",
+      uname: $("bd_uname").value.trim() || ("Linux " + hostname + " 5.15.0-generic #1 SMP x86_64 GNU/Linux"),
+      services: ($("bd_services").value || "").split("\n").map(s=>s.trim()).filter(Boolean),
+      users: ($("bd_users").value || "").split("\n").map(s=>s.trim()).filter(Boolean),
+      intel: ($("bd_intel").value || "").split("\n").map(s=>s.trim()).filter(Boolean),
+      flag
+    },
+    steps
+  };
+  if (!L.target.users.includes("root")) L.target.users.unshift("root");
+  customLevels.push(L);
+  persistCustomLevels();
+  status.style.color = "#6cff6c";
+  status.textContent = "// saved · " + L.name + " added to lobby";
+  setTimeout(() => { closeBuilder(); renderLobby(); }, 600);
+}
+
+/* ===================== WIRING ===================== */
+$("cmd").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const v = e.target.value;
+    e.target.value = "";
+    handleCommand(v);
+  }
+});
+$("backBtn").addEventListener("click", backToLobby);
+$("notesBtn").addEventListener("click", openNotes);
+$("hintBtn").addEventListener("click", showHint);
+$("answersBtn").addEventListener("click", openAnswers);
+$("closeNotes").addEventListener("click", closeNotes);
+$("closeAnswers").addEventListener("click", closeAnswers);
+$("notesModal").addEventListener("click", e => { if (e.target.id === "notesModal") closeNotes(); });
+$("answersModal").addEventListener("click", e => { if (e.target.id === "answersModal") closeAnswers(); });
+document.addEventListener("keydown", e => { if ($("pwned").classList.contains("show")) dismissPwn(); });
+
+// login wiring
+$("loginBtn").addEventListener("click", attemptLogin);
+$("guestBtn").addEventListener("click", loginAsGuest);
+$("reloginBtn").addEventListener("click", openLogin);
+$("loginPass").addEventListener("keydown", e => { if (e.key === "Enter") attemptLogin(); });
+$("loginUser").addEventListener("keydown", e => { if (e.key === "Enter") $("loginPass").focus(); });
+
+// builder wiring
+$("closeBuilder").addEventListener("click", closeBuilder);
+$("bd_cancel").addEventListener("click", closeBuilder);
+$("bd_save").addEventListener("click", saveBuilderLevel);
+$("bd_addStep").addEventListener("click", () => { builderSteps.push({ cmd: "", hint: "" }); renderBuilderSteps(); });
+$("builderModal").addEventListener("click", e => { if (e.target.id === "builderModal") closeBuilder(); });
+document.querySelectorAll(".tpl-row .tpl").forEach(btn => {
+  btn.addEventListener("click", () => applyBuilderTemplate(btn.dataset.tpl));
+});
+
+loadCustomLevels();
+loadHiddenBuiltins();
+renderLobby();
+</script>
+</body>
+</html>
