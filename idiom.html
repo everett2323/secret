@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Idiom Buzzer Game</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #1e3c72, #2a5298); color: #fff; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+  .screen.active { display: flex; }
+
+  h1 { font-size: 3rem; margin-bottom: 16px; text-shadow: 2px 2px 6px rgba(0,0,0,0.4); }
+  h2 { font-size: 2rem; margin-bottom: 24px; }
+  p.sub { font-size: 1.1rem; margin-bottom: 32px; opacity: 0.85; text-align: center; max-width: 700px; }
+
+  .choice-row { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .choice-btn {
+    background: #fff; color: #1e3c72; border: none; border-radius: 16px;
+    font-size: 1.4rem; font-weight: 700; padding: 24px 40px; cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.3); transition: transform .15s, background .15s;
+    min-width: 160px;
+  }
+  .choice-btn:hover { transform: translateY(-4px); background: #ffd86b; }
+  .choice-btn small { display: block; font-size: 0.85rem; font-weight: 400; margin-top: 6px; opacity: 0.7; }
+
+  /* GAME SCREEN */
+  #game-screen { padding: 0; }
+  #game-board { position: relative; width: 100%; height: 100%; }
+
+  .buzzer {
+    position: absolute; width: 200px; height: 140px;
+    background: #d63031; color: #fff; border: 4px solid #fff; border-radius: 18px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 1.2rem; font-weight: 800; cursor: pointer; user-select: none;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+    transition: transform .1s, filter .1s, box-shadow .15s;
+  }
+  /* Per-player base colors */
+  .buzzer.color-1 { background: #e74c3c; }              /* red */
+  .buzzer.color-2 { background: #3498db; }              /* blue */
+  .buzzer.color-3 { background: #27ae60; }              /* green */
+  .buzzer.color-4 { background: #f1c40f; color: #1e3c72; } /* yellow */
+  .buzzer:hover { filter: brightness(1.15); }
+  .buzzer:active, .buzzer.pressed { transform: scale(0.95); filter: brightness(1.3); }
+  .buzzer .score { font-size: 2rem; margin-top: 4px; }
+  .buzzer .key { font-size: 0.8rem; opacity: 0.85; margin-top: 4px; font-weight: 500; }
+  .buzzer.locked { opacity: 0.35; pointer-events: none; }
+  .buzzer.active-turn { background: #00b894 !important; color: #fff !important; border-color: #ffd86b; box-shadow: 0 0 30px #ffd86b; }
+  .buzzer.can-steal { box-shadow: 0 0 0 4px #ffd86b, 0 8px 20px rgba(0,0,0,0.4); animation: stealPulse 0.7s infinite; }
+  @keyframes stealPulse { 0%,100% { box-shadow: 0 0 0 4px #ffd86b, 0 8px 20px rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 0 8px #ffd86b, 0 10px 24px rgba(0,0,0,0.5); } }
+
+  /* Touch devices: drop keyboard hints since there's no keyboard */
+  @media (hover: none) and (pointer: coarse) {
+    .buzzer .key { display: none; }
+    .buzzer { width: clamp(120px, 28vw, 200px); height: clamp(100px, 20vh, 140px); font-size: 1rem; }
+    .buzzer .score { font-size: 1.6rem; }
+    #buzzer-1, #buzzer-2 { left: 12px; }
+    #buzzer-3, #buzzer-4 { right: 12px; }
+    #question-area { width: min(80%, 700px); padding: 20px; }
+    #idiom-text { font-size: 1.7rem; }
+  }
+
+  /* Buzzer positions matching sketch */
+  #buzzer-1 { top: 24px; left: 24px; }
+  #buzzer-4 { top: 24px; right: 24px; }
+  #buzzer-2 { bottom: 24px; left: 24px; }
+  #buzzer-3 { bottom: 24px; right: 24px; }
+
+  #timer-display {
+    position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.4); border: 3px solid #fff; border-radius: 50px;
+    padding: 10px 30px; font-size: 1.8rem; font-weight: 800; min-width: 140px; text-align: center;
+  }
+  #timer-display.hidden { visibility: hidden; }
+  #timer-display.urgent { background: #d63031; animation: pulse 0.5s infinite; }
+  @keyframes pulse { 0%,100%{transform:translateX(-50%) scale(1);} 50%{transform:translateX(-50%) scale(1.1);} }
+
+  #question-area {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(70%, 700px); background: rgba(255,255,255,0.95); color: #1e3c72;
+    border-radius: 20px; padding: 30px; box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    text-align: center;
+  }
+  #question-counter { font-size: 0.95rem; opacity: 0.6; margin-bottom: 8px; font-weight: 600; }
+  #idiom-text { font-size: 2.2rem; font-weight: 800; margin-bottom: 20px; }
+  #status-text { font-size: 1.1rem; margin-bottom: 18px; min-height: 1.4em; font-weight: 600; color: #2a5298; }
+  #answers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .answer-btn {
+    background: #2a5298; color: #fff; border: none; border-radius: 12px;
+    padding: 16px; font-size: 1.05rem; font-weight: 600; cursor: pointer;
+    transition: background .15s, transform .15s;
+  }
+  .answer-btn:hover:not(:disabled) { background: #1e3c72; transform: translateY(-2px); }
+  .answer-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+  .answer-btn.correct { background: #00b894 !important; }
+  .answer-btn.wrong { background: #d63031 !important; }
+  #answers.dim .answer-btn { pointer-events: none; opacity: 0.5; }
+
+  /* RANKINGS */
+  #rankings-list { list-style: none; width: min(90%, 500px); }
+  #rankings-list li {
+    background: rgba(255,255,255,0.95); color: #1e3c72;
+    padding: 18px 24px; border-radius: 14px; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 1.4rem; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+  #rankings-list li .rank { font-size: 2rem; margin-right: 16px; }
+  #rankings-list li.first { background: linear-gradient(135deg, #ffd86b, #f7b733); }
+  #rankings-list li.second { background: linear-gradient(135deg, #e0e0e0, #b0b0b0); }
+  #rankings-list li.third { background: linear-gradient(135deg, #cd7f32, #a05a2c); color: #fff; }
+
+  .small-btn {
+    background: transparent; color: #fff; border: 2px solid #fff; border-radius: 10px;
+    padding: 10px 22px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 24px;
+  }
+  .small-btn:hover { background: #fff; color: #1e3c72; }
+
+  #mode-info { font-size: 0.95rem; opacity: 0.8; margin-top: 20px; max-width: 600px; text-align: center; }
+
+  /* Timed-scoring toggle (slider switch) */
+  .toggle-row {
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(255,255,255,0.1); padding: 14px 22px; border-radius: 14px;
+    margin-bottom: 28px; max-width: 520px;
+  }
+  .toggle-row .toggle-label { font-weight: 700; font-size: 1.1rem; }
+  .toggle-row .toggle-sub { font-size: 0.85rem; opacity: 0.85; }
+  .switch { position: relative; width: 64px; height: 32px; flex-shrink: 0; }
+  .switch input { display: none; }
+  .slider {
+    position: absolute; inset: 0; background: #555; border-radius: 32px;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .slider::before {
+    content: ""; position: absolute; width: 26px; height: 26px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform 0.2s;
+  }
+  .switch input:checked + .slider { background: #00b894; }
+  .switch input:checked + .slider::before { transform: translateX(32px); }
+
+  /* Points display during gameplay */
+  #points-display {
+    position: absolute; top: 110px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(135deg, #ffd86b, #f7b733); color: #1e3c72;
+    border: 3px solid #fff; border-radius: 50px;
+    padding: 8px 26px; font-size: 1.5rem; font-weight: 800; min-width: 160px; text-align: center;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+  }
+  #points-display.hidden { display: none; }
+  #points-display.locked { background: linear-gradient(135deg, #00b894, #00cec9); color: #fff; }
+
+  /* NAMES screen */
+  #names-form { display: flex; flex-direction: column; gap: 14px; width: min(90%, 420px); margin-bottom: 24px; }
+  .name-row { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.1); padding: 12px 16px; border-radius: 12px; }
+  .name-row label { font-weight: 700; min-width: 90px; font-size: 1.05rem; }
+  .name-row input {
+    flex: 1; border: none; border-radius: 8px; padding: 10px 14px;
+    font-size: 1rem; font-family: inherit; background: #fff; color: #1e3c72; font-weight: 600;
+  }
+  .name-row input:focus { outline: 3px solid #ffd86b; }
+
+  /* Certificate buttons on ranking row */
+  #rankings-list li .cert-btn {
+    background: rgba(0,0,0,0.15); color: inherit; border: 2px solid currentColor; border-radius: 8px;
+    padding: 6px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; margin-left: 12px;
+    transition: background .15s, transform .15s;
+  }
+  #rankings-list li .cert-btn:hover { background: rgba(0,0,0,0.25); transform: translateY(-1px); }
+  #rankings-list li .right { display: flex; align-items: center; gap: 8px; }
+  #rankings-list li .best-badge {
+    display: inline-block; font-size: 0.65rem; font-weight: 800; padding: 3px 8px;
+    border-radius: 6px; margin-left: 8px; background: #ffd86b; color: #5a3a00;
+    letter-spacing: 0.05em; vertical-align: middle;
+  }
+  #rankings-list li .best-prev { font-size: 0.75rem; font-weight: 500; opacity: 0.7; margin-left: 8px; }
+
+  /* RULES screen */
+  #rules-list {
+    list-style: decimal inside;
+    width: min(90%, 640px);
+    max-height: 60vh;
+    overflow-y: auto;
+    background: rgba(255,255,255,0.95);
+    color: #1e3c72;
+    padding: 24px 28px 24px 32px;
+    border-radius: 14px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+    margin-bottom: 8px;
+  }
+  #rules-list li {
+    font-size: 1.05rem;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    padding-left: 6px;
+  }
+  #rules-list li:last-child { margin-bottom: 0; }
+
+  /* HIGH SCORES screen */
+  #highscores-list { list-style: none; width: min(90%, 540px); margin-bottom: 8px; }
+  #highscores-list li {
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(255,255,255,0.95); color: #1e3c72;
+    padding: 14px 22px; border-radius: 12px; margin-bottom: 10px;
+    font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    gap: 12px;
+  }
+  #highscores-list li.rank-1 { background: linear-gradient(135deg, #ffd86b, #f7b733); }
+  #highscores-list li.rank-2 { background: linear-gradient(135deg, #e0e0e0, #b0b0b0); }
+  #highscores-list li.rank-3 { background: linear-gradient(135deg, #cd7f32, #a05a2c); color: #fff; }
+  #highscores-list .hs-place { font-size: 1.6rem; min-width: 40px; text-align: center; }
+  #highscores-list .hs-name  { font-size: 1.2rem; flex: 1; }
+  #highscores-list .hs-meta  { font-size: 0.75rem; font-weight: 500; opacity: 0.75; display: block; margin-top: 2px; }
+  #highscores-list .hs-score { font-size: 1.3rem; }
+  #highscores-empty { font-size: 1.1rem; opacity: 0.85; margin-bottom: 20px; text-align: center; }
+  .home-btn-row { display: flex; gap: 14px; margin-top: 16px; flex-wrap: wrap; justify-content: center; }
+  #clear-bests-btn {
+    background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.5);
+    border-radius: 10px; padding: 8px 18px; font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; opacity: 0.7;
+  }
+  #clear-bests-btn:hover { opacity: 1; border-color: #fff; }
+
+  /* SCOREBOARD interstitial */
+  #scoreboard-list { list-style: none; width: min(90%, 460px); margin-bottom: 8px; }
+  #scoreboard-list li {
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(255,255,255,0.95); color: #1e3c72;
+    padding: 14px 22px; border-radius: 12px; margin-bottom: 10px;
+    font-size: 1.2rem; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+  #scoreboard-list li .swatch {
+    display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 10px;
+    vertical-align: middle; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+  }
+
+  /* Confetti */
+  #confetti-container {
+    position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 5;
+  }
+  .confetti-piece {
+    position: absolute; top: -20px; width: 10px; height: 14px; opacity: 0.95;
+    animation: confettiFall 4s linear forwards;
+  }
+  @keyframes confettiFall {
+    0%   { transform: translateY(0) rotate(0deg); }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+  }
+
+  /* Mute button */
+  #mute-btn {
+    position: fixed; bottom: 16px; left: 16px; z-index: 50;
+    background: rgba(0,0,0,0.4); color: #fff; border: 2px solid #fff;
+    border-radius: 50%; width: 40px; height: 40px; font-size: 1.05rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    opacity: 0.8;
+  }
+  #mute-btn:hover { background: rgba(0,0,0,0.6); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- SCREEN 1: Players -->
+<div class="screen active" id="players-screen">
+  <h1>Idiom Buzzer Game</h1>
+  <p class="sub">Pick the meaning of each English idiom before your rivals do!</p>
+  <h2>How many players?</h2>
+  <div class="choice-row">
+    <button class="choice-btn" data-players="1">1<small>solo</small></button>
+    <button class="choice-btn" data-players="2">2<small>head-to-head</small></button>
+    <button class="choice-btn" data-players="3">3<small>three-way</small></button>
+    <button class="choice-btn" data-players="4">4<small>full table</small></button>
+  </div>
+  <div class="home-btn-row">
+    <button class="small-btn" id="open-highscores-btn">🏆 High Scores</button>
+  </div>
+  <div class="home-btn-row">
+    <button class="small-btn" id="open-rules-btn">📖 Rules</button>
+  </div>
+</div>
+
+<!-- SCREEN 1.6: Rules -->
+<div class="screen" id="rules-screen">
+  <h1>📖 Rules</h1>
+  <ol id="rules-list"></ol>
+  <div class="home-btn-row">
+    <button class="small-btn" id="rules-back-btn">← Back</button>
+  </div>
+</div>
+
+<!-- SCREEN 1.5: High Scores -->
+<div class="screen" id="highscores-screen">
+  <h1>🏆 High Scores</h1>
+  <p class="sub">Top 5 scores ever recorded on this device.</p>
+  <ol id="highscores-list"></ol>
+  <div id="highscores-empty" style="display:none">No scores yet — play a round to put a name on the board!</div>
+  <div class="home-btn-row">
+    <button class="small-btn" id="highscores-back-btn">← Back</button>
+    <button id="clear-bests-btn">Clear All</button>
+  </div>
+</div>
+
+<!-- SCREEN 2: Mode -->
+<div class="screen" id="mode-screen">
+  <h1>Choose Mode</h1>
+
+  <div class="toggle-row">
+    <label class="switch">
+      <input type="checkbox" id="timed-scoring-toggle" />
+      <span class="slider"></span>
+    </label>
+    <div>
+      <div class="toggle-label">Timed Scoring</div>
+      <div class="toggle-sub">Points start at 1500 per question and tick down — the faster you answer, the more you keep.</div>
+    </div>
+  </div>
+
+  <div class="toggle-row">
+    <label class="switch">
+      <input type="checkbox" id="steal-toggle" />
+      <span class="slider"></span>
+    </label>
+    <div>
+      <div class="toggle-label">Steal Mechanic</div>
+      <div class="toggle-sub">If the buzzer answers wrong, the other players get 5 seconds to buzz in and steal for half points.</div>
+    </div>
+  </div>
+
+  <div class="choice-row">
+    <button class="choice-btn" data-mode="normal">Normal<small>unlimited buzz time</small></button>
+    <button class="choice-btn" data-mode="timed">Timed<small>5s to buzz · 2s to answer</small></button>
+    <button class="choice-btn" data-mode="hard">Hard<small>3s to buzz · 1.5s to answer</small></button>
+  </div>
+  <p id="mode-info">First to win 15 questions, or highest score after all 15, takes the crown.</p>
+</div>
+
+<!-- SCREEN 2.5: Names -->
+<div class="screen" id="names-screen">
+  <h1>Player Names</h1>
+  <p class="sub">Names appear on the buzzers, the rankings, and your certificate.</p>
+  <form id="names-form" autocomplete="off"></form>
+  <div class="choice-row">
+    <button class="choice-btn" id="names-start-btn">Start Game</button>
+  </div>
+</div>
+
+<!-- SCREEN 3: Game -->
+<div class="screen" id="game-screen">
+  <div id="game-board">
+    <div id="timer-display" class="hidden">5.0s</div>
+    <div id="points-display" class="hidden">1500 pts</div>
+
+    <div class="buzzer color-1" id="buzzer-1" data-player="1">
+      <div class="name">BUZZER 1</div>
+      <div class="score">0</div>
+      <div class="key">key: Q</div>
+    </div>
+    <div class="buzzer color-2" id="buzzer-2" data-player="2">
+      <div class="name">BUZZER 2</div>
+      <div class="score">0</div>
+      <div class="key">key: Z</div>
+    </div>
+    <div class="buzzer color-3" id="buzzer-3" data-player="3">
+      <div class="name">BUZZER 3</div>
+      <div class="score">0</div>
+      <div class="key">key: M</div>
+    </div>
+    <div class="buzzer color-4" id="buzzer-4" data-player="4">
+      <div class="name">BUZZER 4</div>
+      <div class="score">0</div>
+      <div class="key">key: P</div>
+    </div>
+
+    <div id="question-area">
+      <div id="question-counter">Question 1 of 15</div>
+      <div id="idiom-text">—</div>
+      <div id="status-text">Hit your buzzer to answer!</div>
+      <div id="answers"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 3.5: Mid-game scoreboard -->
+<div class="screen" id="scoreboard-screen">
+  <h1 id="scoreboard-title">Scoreboard</h1>
+  <p class="sub" id="scoreboard-sub">After Q5</p>
+  <ol id="scoreboard-list"></ol>
+  <button class="small-btn" id="scoreboard-continue-btn">Continue</button>
+</div>
+
+<!-- SCREEN 4: Rankings -->
+<div class="screen" id="rankings-screen">
+  <div id="confetti-container"></div>
+  <h1>Final Rankings</h1>
+  <ol id="rankings-list"></ol>
+  <button class="small-btn" id="play-again-btn">Play Again</button>
+</div>
+
+<button id="mute-btn" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+
+<script>
+// ---- RULES ----
+// Edit any of these strings to change the rules shown on the Rules screen.
+// Add or remove items freely — the list renders whatever is in this array.
+const RULES = [
+  "Pick how many players will play (1 to 4). Each player gets their own buzzer and key.",
+  "Choose a mode: Normal (no time limits), Timed (5s to buzz, 2s to answer), or Hard (3s to buzz, 1.5s to answer).",
+  "Optional Timed Scoring: each question starts at 1500 points and ticks down — answer fast to keep more.",
+  "Optional Steal Mechanic: if a player answers wrong, the others get 5 seconds to buzz in and steal for half points.",
+  "When the idiom appears, hit your buzzer (click it or press your key: Q, Z, M, or P) to claim the question.",
+  "After buzzing in, pick the correct meaning from the four answers before the answer timer runs out.",
+  "Correct answer earns points; wrong answer (or timeout) loses the same amount.",
+  "The game runs for 15 questions. Highest score at the end wins the gold!",
+  "Top finishers can download a personalized certificate from the final rankings screen.",
+  "Your best score per name is saved on this device — check the High Scores screen to see the top 5.",
+];
+
+const idioms = [
+  { idiom: "It's raining cats and dogs", answers: [ "Cats and dogs falling from the sky", "It's raining hard", "Crying hard", "Pets falling from the sky" ], correct: 1 },
+  { idiom: "Break the ice", answers: [ "Breaking the ice", "Start a conversation", "Get warm", "Join a conversation" ], correct: 1 },
+  { idiom: "Hit the hay", answers: [ "Ride the horse", "Hit the hay", "Go to bed", "Watch a horse sleep" ], correct: 2 },
+  { idiom: "Hit the books", answers: [ "Study", "Read", "Go to the library", "Finish the book" ], correct: 0 },
+  { idiom: "Piece of cake", answers: [ "Easy", "Eat cake", "Birthday party", "Irresistible" ], correct: 0 },
+  { idiom: "Break a leg", answers: [ "Don't get hurt", "Unfortunate time", "Good luck", "Go on stage" ], correct: 2 },
+  { idiom: "Call it a day", answers: [ "Eat a snack", "Call a day", "Relax", "Call someone" ], correct: 2 },
+  { idiom: "Once in a blue moon", answers: [ "Something impossible", "Something that happens rarely", "When a blue moon happens", "When someone gets hurt" ], correct: 1 },
+  { idiom: "Pass with flying colors", answers: [ "Pass a test", "Succeed with high marks", "Make people comfortable in a meeting", "Make people uncomfortable" ], correct: 1 },
+  { idiom: "Having a green thumb", answers: [ "Having a sickness", "Being good at gardening", "Always recycling", "Being a lazy person" ], correct: 1 },
+  { idiom: "Cost an arm and a leg", answers: [ "Priceless", "Expensive", "Cheap", "Worthless" ], correct: 1 },
+  { idiom: "Take it with a grain of salt", answers: [ "Take a lot of salt", "Put salt in food", "Don't take it seriously", "Take it with importance" ], correct: 2 },
+  { idiom: "Spill the beans", answers: [ "Tell a secret", "Spill beans", "Be wrong", "Take a lot of beans" ], correct: 0 },
+  { idiom: "Hit the nail on the head", answers: [ "Perfectly describe something", "Do something perfectly", "Start a project", "Get to work" ], correct: 0 },
+  { idiom: "Bite the bullet", answers: [ "Get hurt by a bullet", "Endure something painful", "Eat too fast", "Make a loud noise" ], correct: 1 },
+  { idiom: "When pigs fly", answers: [ "Never", "Impossible", "When someone dies", "Very rare" ], correct: 0 },
+  { idiom: "Let the cat out of the bag", answers: [ "To purposely tell a secret", "To accidentally tell a secret", "To gossip", "To have a conversation" ], correct: 1 },
+  { idiom: "Fly off the handle", answers: [ "Become suddenly angry", "Be in a bad mood", "Lose control", "Go insane" ], correct: 0 },
+  { idiom: "Elephant in the room", answers: [ "The obvious issue that is ignored", "A person who has a huge secret", "Having a conversation about an issue", "A problem that is not solved" ], correct: 0 },
+  { idiom: "Cut corners ", answers: [ "Cut some bricks", "Do something without effort", "Do something that is very hard", "Chop wood" ], correct: 1 },
+  { idiom: "Chew the fat", answers: [ "Chew a lot of steak", "Go to a nice restaurant", "To have a long talk with someone", "Cut a fat fish" ], correct: 2 },
+  { idiom: "Pie in the sky", answers: [ "A dream or hope that is very unlikely", "A huge pie on the table", "A lot of food", "When you have a dream of pie" ], correct: 0 },
+  { idiom: "Get cold feet", answers: [ "Become nervous", "Not being able to move because of fear", "Get hypothermia", "To stop an activity" ], correct: 0 },
+  { idiom: "Ride the high horse", answers: [ "To act arrogant", "To be above someone", "To be more important", "To become a better person" ], correct: 0 },
+  { idiom: "On cloud nine", answers: [ "Very happy", "Very sad", "Very scared", "Very angry" ], correct: 0 },
+  { idiom: "Wet behind the ears.", answers: [ "In a pool", "Taking a shower", "Very young", "Being inexperienced" ], correct: 2 },
+  { idiom: "Have a bee in your bonnet", answers: [ "A bee stung you.", "Obsessed with a single idea.", "A bee is in your bonnet.", "A bee is flying around you." ], correct: 1 },
+];
+
+const MODE_CONFIG = {
+  normal: { buzzTime: null, answerTime: null, label: "Normal" },
+  timed:  { buzzTime: 5.0, answerTime: 2.0, label: "Timed" },
+  hard:   { buzzTime: 3.0, answerTime: 1.5, label: "Hard" },
+};
+
+const KEY_FOR_PLAYER = { '1': 'q', '2': 'z', '3': 'm', '4': 'p' };
+const PLAYER_FOR_KEY = { q: 1, z: 2, m: 3, p: 4 };
+const PLAYER_COLORS = { 1: '#e74c3c', 2: '#3498db', 3: '#27ae60', 4: '#f1c40f' };
+
+const POINTS_START = 1500;
+const POINTS_FLOOR = 0;
+const POINTS_DECAY_PER_SEC = 100; // 1500 → 0 over 15s
+const STEAL_BUZZ_TIME = 5.0;
+const SCOREBOARD_EVERY = 5; // show mid-game scoreboard after Q5, Q10
+const STORAGE_KEY = 'idiom-game-bests-v1';
+const MUTE_KEY = 'idiom-game-muted';
+
+// ---- Sound effects (Web Audio) ----
+const audio = {
+  ctx: null,
+  muted: false,
+  ensureCtx() {
+    if (!this.ctx) {
+      try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch { return null; }
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    return this.ctx;
+  },
+  tone(freq, duration, type = 'sine', volume = 0.2, delay = 0) {
+    if (this.muted) return;
+    const ctx = this.ensureCtx(); if (!ctx) return;
+    const t0 = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(volume, t0 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.05);
+  },
+  buzz()   { this.tone(180, 0.22, 'square', 0.25); this.tone(120, 0.22, 'square', 0.18, 0.02); },
+  correct(){ this.tone(523, 0.16, 'sine', 0.25, 0); this.tone(784, 0.28, 'sine', 0.25, 0.13); },
+  wrong()  { this.tone(220, 0.18, 'square', 0.22, 0); this.tone(110, 0.34, 'square', 0.22, 0.16); },
+  steal()  { this.tone(660, 0.1, 'triangle', 0.22, 0); this.tone(880, 0.1, 'triangle', 0.22, 0.1); this.tone(1100, 0.18, 'triangle', 0.22, 0.2); },
+  fanfare(){
+    const notes = [523, 659, 784, 1046]; // C5 E5 G5 C6
+    notes.forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.25, i * 0.13));
+    this.tone(1046, 0.6, 'triangle', 0.28, notes.length * 0.13);
+    this.tone(1568, 0.6, 'triangle', 0.24, notes.length * 0.13 + 0.02);
+  },
+  setMuted(m) {
+    this.muted = m;
+    try { localStorage.setItem(MUTE_KEY, m ? '1' : '0'); } catch {}
+    document.getElementById('mute-btn').textContent = m ? '🔇' : '🔊';
+  },
+};
+
+// ---- localStorage best scores ----
+function loadBests() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch { return {}; }
+}
+function saveBests(bests) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(bests)); } catch {}
+}
+function bestKey(name) { return String(name).trim().toLowerCase(); }
+function getBest(name) { return loadBests()[bestKey(name)] || null; }
+function recordBest(name, score, mode, timedScoring) {
+  const bests = loadBests();
+  const key = bestKey(name);
+  const prev = bests[key];
+  if (!prev || score > prev.score) {
+    bests[key] = { name, score, mode, timedScoring, date: new Date().toISOString() };
+    saveBests(bests);
+    return { isNewBest: true, prevScore: prev ? prev.score : null };
+  }
+  return { isNewBest: false, prevScore: prev.score };
+}
+
+const state = {
+  numPlayers: 0,
+  mode: 'normal',
+  timedScoring: false,
+  stealEnabled: false,
+  names: ['Player 1','Player 2','Player 3','Player 4'],
+  scores: [0,0,0,0],
+  questionOrder: [],
+  questionIndex: 0,
+  phase: 'idle', // 'buzz' | 'answer' | 'reveal' | 'steal-buzz'
+  activePlayer: null,
+  lockedPlayers: new Set(),
+  isSteal: false,            // current attempt is a steal
+  buzzTimer: null,
+  buzzDeadline: 0,
+  answerTimer: null,
+  answerDeadline: 0,
+  rafId: null,
+  pointValue: POINTS_START,
+  pointStart: 0,
+  pointLocked: false,
+  pointRafId: null,
+};
+
+// ---- Screen helpers ----
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ---- Screen 1 ----
+document.querySelectorAll('#players-screen .choice-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.numPlayers = parseInt(btn.dataset.players, 10);
+    show('mode-screen');
+  });
+});
+
+// ---- Screen 2 ----
+document.querySelectorAll('#mode-screen .choice-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.mode = btn.dataset.mode;
+    state.timedScoring = document.getElementById('timed-scoring-toggle').checked;
+    state.stealEnabled = document.getElementById('steal-toggle').checked;
+    openNamesScreen();
+  });
+});
+
+// ---- Screen 2.5: Names ----
+function openNamesScreen() {
+  const form = document.getElementById('names-form');
+  form.innerHTML = '';
+  for (let p = 1; p <= state.numPlayers; p++) {
+    const row = document.createElement('div');
+    row.className = 'name-row';
+    row.innerHTML = `
+      <label for="name-${p}">Player ${p}</label>
+      <input id="name-${p}" type="text" maxlength="20" placeholder="Player ${p}" value="${state.names[p-1] === 'Player ' + p ? '' : state.names[p-1]}" />
+    `;
+    form.appendChild(row);
+  }
+  show('names-screen');
+  setTimeout(() => document.getElementById('name-1')?.focus(), 50);
+}
+
+document.getElementById('names-start-btn').addEventListener('click', (e) => {
+  e.preventDefault();
+  for (let p = 1; p <= state.numPlayers; p++) {
+    const v = document.getElementById('name-' + p).value.trim();
+    state.names[p-1] = v || ('Player ' + p);
+  }
+  startGame();
+});
+
+document.getElementById('names-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  document.getElementById('names-start-btn').click();
+});
+
+// ---- Game ----
+function startGame() {
+  state.scores = [0,0,0,0];
+  state.questionIndex = 0;
+  state.questionOrder = shuffle([...Array(IDIOMS.length).keys()]).slice(0, 15);
+
+  // Show only the buzzers for active players, and label with chosen names
+  for (let p = 1; p <= 4; p++) {
+    const el = document.getElementById('buzzer-' + p);
+    el.style.display = (p <= state.numPlayers) ? 'flex' : 'none';
+    el.querySelector('.score').textContent = '0';
+    el.querySelector('.name').textContent = state.names[p-1];
+  }
+
+  show('game-screen');
+  nextQuestion();
+}
+
+function nextQuestion() {
+  if (state.questionIndex >= state.questionOrder.length) {
+    return finishGame();
+  }
+
+  clearTimers();
+  state.phase = 'buzz';
+  state.activePlayer = null;
+  state.lockedPlayers = new Set();
+  state.isSteal = false;
+
+  const idiom = IDIOMS[state.questionOrder[state.questionIndex]];
+  document.getElementById('question-counter').textContent =
+    `Question ${state.questionIndex + 1} of ${state.questionOrder.length} · ${MODE_CONFIG[state.mode].label} Mode`;
+  document.getElementById('idiom-text').textContent = idiom.idiom;
+  document.getElementById('status-text').textContent = 'Hit your buzzer to answer!';
+
+  const answersDiv = document.getElementById('answers');
+  answersDiv.innerHTML = '';
+  answersDiv.classList.add('dim');
+  idiom.answers.forEach((ans, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'answer-btn';
+    btn.textContent = ans;
+    btn.dataset.index = i;
+    btn.disabled = true;
+    btn.addEventListener('click', () => handleAnswer(i));
+    answersDiv.appendChild(btn);
+  });
+
+  // Reset buzzer visuals
+  document.querySelectorAll('.buzzer').forEach(b => {
+    b.classList.remove('locked', 'active-turn', 'pressed', 'can-steal');
+  });
+
+  const cfg = MODE_CONFIG[state.mode];
+  if (cfg.buzzTime != null) {
+    startBuzzTimer(cfg.buzzTime);
+  } else {
+    document.getElementById('timer-display').classList.add('hidden');
+  }
+
+  startPointsCountdown();
+}
+
+function startPointsCountdown() {
+  const el = document.getElementById('points-display');
+  if (!state.timedScoring) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.classList.remove('hidden', 'locked');
+  state.pointValue = POINTS_START;
+  state.pointLocked = false;
+  state.pointStart = performance.now();
+  tickPoints();
+}
+
+function tickPoints() {
+  if (!state.timedScoring || state.pointLocked) return;
+  const elapsed = (performance.now() - state.pointStart) / 1000;
+  const v = Math.max(POINTS_FLOOR, Math.round(POINTS_START - elapsed * POINTS_DECAY_PER_SEC));
+  state.pointValue = v;
+  document.getElementById('points-display').textContent = v + ' pts';
+  if (v > POINTS_FLOOR) {
+    state.pointRafId = requestAnimationFrame(tickPoints);
+  }
+}
+
+function lockPointValue() {
+  state.pointLocked = true;
+  if (state.pointRafId) { cancelAnimationFrame(state.pointRafId); state.pointRafId = null; }
+  const el = document.getElementById('points-display');
+  if (state.timedScoring) el.classList.add('locked');
+}
+
+function startBuzzTimer(seconds) {
+  const timerEl = document.getElementById('timer-display');
+  timerEl.classList.remove('hidden', 'urgent');
+  state.buzzDeadline = performance.now() + seconds * 1000;
+  tickBuzz();
+}
+
+function tickBuzz() {
+  const timerEl = document.getElementById('timer-display');
+  const remaining = (state.buzzDeadline - performance.now()) / 1000;
+  if (remaining <= 0) {
+    timerEl.textContent = '0.0s';
+    const wasSteal = state.phase === 'steal-buzz';
+    state.phase = 'reveal';
+    document.getElementById('status-text').textContent = wasSteal
+      ? 'No one stole it.'
+      : 'Time! No one buzzed.';
+    revealCorrectThenAdvance();
+    return;
+  }
+  timerEl.textContent = remaining.toFixed(1) + 's';
+  if (remaining < 1.5) timerEl.classList.add('urgent');
+  state.rafId = requestAnimationFrame(tickBuzz);
+}
+
+function startAnswerTimer(seconds) {
+  const timerEl = document.getElementById('timer-display');
+  timerEl.classList.remove('hidden');
+  timerEl.classList.remove('urgent');
+  state.answerDeadline = performance.now() + seconds * 1000;
+  tickAnswer();
+}
+
+function tickAnswer() {
+  const timerEl = document.getElementById('timer-display');
+  const remaining = (state.answerDeadline - performance.now()) / 1000;
+  if (remaining <= 0) {
+    timerEl.textContent = '0.0s';
+    handleAnswer(-1); // timeout = wrong
+    return;
+  }
+  timerEl.textContent = remaining.toFixed(1) + 's';
+  if (remaining < 0.75) timerEl.classList.add('urgent');
+  state.rafId = requestAnimationFrame(tickAnswer);
+}
+
+function buzzIn(playerNum) {
+  if (state.phase !== 'buzz' && state.phase !== 'steal-buzz') return;
+  if (playerNum > state.numPlayers) return;
+  if (state.lockedPlayers.has(playerNum)) return;
+
+  audio.buzz();
+  clearTimers();
+  if (!state.isSteal) lockPointValue();
+  state.phase = 'answer';
+  state.activePlayer = playerNum;
+
+  const buzzerEl = document.getElementById('buzzer-' + playerNum);
+  buzzerEl.classList.add('active-turn', 'pressed');
+  setTimeout(() => buzzerEl.classList.remove('pressed'), 200);
+
+  // Remove the steal-pulse from all and lock others
+  document.querySelectorAll('.buzzer').forEach(b => b.classList.remove('can-steal'));
+  for (let p = 1; p <= state.numPlayers; p++) {
+    if (p !== playerNum) document.getElementById('buzzer-' + p).classList.add('locked');
+  }
+
+  const prefix = state.isSteal ? `STEAL — ${state.names[playerNum-1]}` : state.names[playerNum-1];
+  document.getElementById('status-text').textContent = `${prefix}, pick the right meaning!`;
+
+  const answersDiv = document.getElementById('answers');
+  answersDiv.classList.remove('dim');
+  answersDiv.querySelectorAll('.answer-btn').forEach(b => b.disabled = false);
+
+  const ansTime = MODE_CONFIG[state.mode].answerTime ?? 2.0;
+  startAnswerTimer(ansTime);
+}
+
+function handleAnswer(selectedIdx) {
+  if (state.phase !== 'answer') return;
+  clearTimers();
+  state.phase = 'reveal';
+
+  const idiom = IDIOMS[state.questionOrder[state.questionIndex]];
+  const player = state.activePlayer;
+  const correctIdx = idiom.correct;
+
+  const answersDiv = document.getElementById('answers');
+  const buttons = answersDiv.querySelectorAll('.answer-btn');
+  buttons.forEach(b => b.disabled = true);
+
+  const playerName = state.names[player - 1];
+  const baseAmount = state.timedScoring ? state.pointValue : 100;
+  const amount = state.isSteal ? Math.floor(baseAmount / 2) : baseAmount;
+  const wasSteal = state.isSteal;
+
+  let delta = 0;
+  if (selectedIdx === correctIdx) {
+    delta = amount;
+    buttons[correctIdx].classList.add('correct');
+    audio.correct();
+    document.getElementById('status-text').textContent =
+      `${playerName} ${wasSteal ? 'stole it!' : 'got it!'} +${amount} points`;
+    state.scores[player - 1] += delta;
+    updateScoreDisplay(player);
+    setTimeout(() => proceedAfterReveal(), 2200);
+  } else {
+    delta = -amount;
+    if (selectedIdx >= 0) buttons[selectedIdx].classList.add('wrong');
+    audio.wrong();
+    const reason = selectedIdx === -1 ? 'ran out of time' : 'was wrong';
+    document.getElementById('status-text').textContent =
+      `${playerName} ${reason}. −${amount} points`;
+    state.scores[player - 1] += delta;
+    updateScoreDisplay(player);
+
+    // Try steal: only if enabled, not already a steal, and at least 2 active players remain
+    const canSteal = state.stealEnabled && !wasSteal && state.numPlayers > 1;
+    if (canSteal) {
+      setTimeout(() => startStealPhase(player), 1500);
+    } else {
+      buttons[correctIdx].classList.add('correct');
+      setTimeout(() => proceedAfterReveal(), 2200);
+    }
+  }
+}
+
+function updateScoreDisplay(player) {
+  document.getElementById('buzzer-' + player).querySelector('.score').textContent =
+    state.scores[player - 1];
+}
+
+function startStealPhase(originalPlayer) {
+  state.phase = 'steal-buzz';
+  state.isSteal = true;
+  state.activePlayer = null;
+  state.lockedPlayers = new Set([originalPlayer]);
+
+  for (let p = 1; p <= state.numPlayers; p++) {
+    const el = document.getElementById('buzzer-' + p);
+    el.classList.remove('active-turn', 'pressed');
+    if (p === originalPlayer) {
+      el.classList.add('locked');
+    } else {
+      el.classList.remove('locked');
+      el.classList.add('can-steal');
+    }
+  }
+
+  const answersDiv = document.getElementById('answers');
+  answersDiv.classList.add('dim');
+  answersDiv.querySelectorAll('.answer-btn').forEach(b => {
+    b.disabled = true;
+    b.classList.remove('correct', 'wrong');
+  });
+
+  audio.steal();
+  document.getElementById('status-text').textContent =
+    'STEAL! Other players — buzz in for half points!';
+
+  startBuzzTimer(STEAL_BUZZ_TIME);
+}
+
+function revealCorrectThenAdvance() {
+  document.querySelectorAll('.buzzer').forEach(b => b.classList.remove('can-steal'));
+  const idiom = IDIOMS[state.questionOrder[state.questionIndex]];
+  const buttons = document.querySelectorAll('#answers .answer-btn');
+  buttons.forEach(b => b.disabled = true);
+  buttons[idiom.correct].classList.add('correct');
+  setTimeout(() => proceedAfterReveal(), 2200);
+}
+
+function proceedAfterReveal() {
+  state.isSteal = false;
+  state.questionIndex++;
+  if (state.questionIndex >= state.questionOrder.length) {
+    return finishGame();
+  }
+  // Show interstitial scoreboard every Nth question (not on the final one)
+  if (state.questionIndex % SCOREBOARD_EVERY === 0) {
+    showScoreboard();
+  } else {
+    nextQuestion();
+  }
+}
+
+function showScoreboard() {
+  document.getElementById('points-display').classList.add('hidden');
+  document.getElementById('scoreboard-sub').textContent =
+    `After Q${state.questionIndex} of ${state.questionOrder.length}`;
+
+  const list = document.getElementById('scoreboard-list');
+  list.innerHTML = '';
+  const ranked = [];
+  for (let p = 1; p <= state.numPlayers; p++) {
+    ranked.push({ player: p, score: state.scores[p - 1], name: state.names[p - 1] });
+  }
+  ranked.sort((a, b) => b.score - a.score);
+  ranked.forEach((r, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span><span class="swatch" style="background:${PLAYER_COLORS[r.player]}"></span>${i + 1}. ${escapeHtml(r.name)}</span>
+      <span>${r.score} pts</span>
+    `;
+    list.appendChild(li);
+  });
+  show('scoreboard-screen');
+}
+
+document.getElementById('scoreboard-continue-btn').addEventListener('click', () => {
+  show('game-screen');
+  nextQuestion();
+});
+
+function finishGame() {
+  clearTimers();
+  document.getElementById('points-display').classList.add('hidden');
+  const list = document.getElementById('rankings-list');
+  list.innerHTML = '';
+
+  const ranked = [];
+  for (let p = 1; p <= state.numPlayers; p++) {
+    ranked.push({ player: p, score: state.scores[p - 1], name: state.names[p - 1] });
+  }
+  ranked.sort((a, b) => b.score - a.score);
+
+  const rankClass = ['first', 'second', 'third', ''];
+  const medals = ['🥇', '🥈', '🥉', '4'];
+  ranked.forEach((r, i) => {
+    const place = i + 1;
+    const isLast = (place === ranked.length) && ranked.length > 1;
+    const bestInfo = recordBest(r.name, r.score, MODE_CONFIG[state.mode].label, state.timedScoring);
+
+    let badgeHtml = '';
+    if (bestInfo.isNewBest && bestInfo.prevScore != null) {
+      badgeHtml = `<span class="best-badge">NEW BEST!</span>`;
+    } else if (bestInfo.isNewBest) {
+      badgeHtml = `<span class="best-badge">FIRST RUN</span>`;
+    } else {
+      badgeHtml = `<span class="best-prev">best: ${bestInfo.prevScore}</span>`;
+    }
+
+    const li = document.createElement('li');
+    li.className = rankClass[i] || '';
+    li.innerHTML = `
+      <span><span class="rank">${medals[i] || (place)}</span> ${escapeHtml(r.name)}${badgeHtml}</span>
+      <span class="right">
+        <span>${r.score} pts</span>
+        <button class="cert-btn" data-place="${place}" data-last="${isLast}" data-name="${escapeAttr(r.name)}" data-score="${r.score}">Certificate</button>
+      </span>
+    `;
+    list.appendChild(li);
+  });
+
+  list.querySelectorAll('.cert-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      downloadCertificate({
+        name: btn.dataset.name,
+        place: parseInt(btn.dataset.place, 10),
+        score: parseInt(btn.dataset.score, 10),
+        isLast: btn.dataset.last === 'true',
+        mode: MODE_CONFIG[state.mode].label,
+        timedScoring: state.timedScoring,
+      });
+    });
+  });
+
+  show('rankings-screen');
+  audio.fanfare();
+  launchConfetti();
+}
+
+function launchConfetti() {
+  const container = document.getElementById('confetti-container');
+  container.innerHTML = '';
+  const colors = ['#e74c3c', '#3498db', '#27ae60', '#f1c40f', '#9b59b6', '#ffd86b', '#fff'];
+  for (let i = 0; i < 100; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = (Math.random() * 100) + '%';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDelay = (Math.random() * 1.2) + 's';
+    piece.style.animationDuration = (3 + Math.random() * 2.5) + 's';
+    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+    container.appendChild(piece);
+  }
+  setTimeout(() => { container.innerHTML = ''; }, 7000);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+// ---- Certificate ----
+function certificateTheme(place, isLast) {
+  // 1st gold, 2nd silver, 3rd bronze, last white. If last overlaps with 1/2/3, place wins.
+  if (place === 1) return { name: 'Gold',   bg: '#fff7d6', border: '#d4af37', accent: '#b8860b', ribbon: '#d4af37', text: '#5a3a00' };
+  if (place === 2) return { name: 'Silver', bg: '#f2f4f7', border: '#a8a8a8', accent: '#7d7d7d', ribbon: '#bfc3c9', text: '#333' };
+  if (place === 3) return { name: 'Bronze', bg: '#f8ead8', border: '#a05a2c', accent: '#8b4513', ribbon: '#cd7f32', text: '#4a2400' };
+  if (isLast)      return { name: 'White',  bg: '#ffffff', border: '#cccccc', accent: '#888888', ribbon: '#d9d9d9', text: '#333' };
+  return                  { name: 'White',  bg: '#ffffff', border: '#cccccc', accent: '#888888', ribbon: '#d9d9d9', text: '#333' };
+}
+
+function ordinal(n) {
+  const s = ['th','st','nd','rd'], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function downloadCertificate({ name, place, score, isLast, mode, timedScoring }) {
+  const theme = certificateTheme(place, isLast);
+  const W = 1400, H = 1000;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Outer decorative border
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 14;
+  ctx.strokeRect(40, 40, W - 80, H - 80);
+  ctx.strokeStyle = theme.accent;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(70, 70, W - 140, H - 140);
+
+  // Corner flourishes
+  ctx.fillStyle = theme.ribbon;
+  [[100,100],[W-100,100],[100,H-100],[W-100,H-100]].forEach(([x,y]) => {
+    ctx.beginPath(); ctx.arc(x, y, 22, 0, Math.PI * 2); ctx.fill();
+  });
+
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.fillStyle = theme.text;
+  ctx.font = 'bold 72px Georgia, serif';
+  ctx.fillText('Certificate of Achievement', W / 2, 220);
+
+  // Subtitle
+  ctx.font = 'italic 28px Georgia, serif';
+  ctx.fillStyle = theme.accent;
+  ctx.fillText('Idiom Buzzer Game', W / 2, 280);
+
+  // "Presented to"
+  ctx.fillStyle = theme.text;
+  ctx.font = '32px Georgia, serif';
+  ctx.fillText('This certificate is proudly presented to', W / 2, 400);
+
+  // Name — fit to width
+  let nameSize = 96;
+  ctx.font = `bold ${nameSize}px Georgia, serif`;
+  while (ctx.measureText(name).width > W - 300 && nameSize > 40) {
+    nameSize -= 4;
+    ctx.font = `bold ${nameSize}px Georgia, serif`;
+  }
+  ctx.fillStyle = theme.accent;
+  ctx.fillText(name, W / 2, 510);
+
+  // Underline under the name
+  const lineY = 540;
+  const lineW = Math.min(W - 260, ctx.measureText(name).width + 120);
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(W/2 - lineW/2, lineY);
+  ctx.lineTo(W/2 + lineW/2, lineY);
+  ctx.stroke();
+
+  // Body text
+  ctx.fillStyle = theme.text;
+  ctx.font = '30px Georgia, serif';
+  ctx.fillText('for finishing', W / 2, 610);
+
+  // Place
+  ctx.font = `bold 64px Georgia, serif`;
+  ctx.fillStyle = theme.accent;
+  ctx.fillText(`${ordinal(place)} Place`, W / 2, 690);
+
+  // Score
+  ctx.fillStyle = theme.text;
+  ctx.font = '30px Georgia, serif';
+  ctx.fillText(`with a final score of ${score} points`, W / 2, 750);
+
+  // Mode + scoring style
+  ctx.font = 'italic 26px Georgia, serif';
+  ctx.fillStyle = theme.accent;
+  const scoringLabel = timedScoring ? ' · Timed Scoring' : '';
+  ctx.fillText(`Game Mode: ${mode}${scoringLabel}`, W / 2, 800);
+
+  // Award tier label (ribbon)
+  ctx.fillStyle = theme.ribbon;
+  ctx.fillRect(W/2 - 180, 850, 360, 60);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 30px Georgia, serif';
+  ctx.fillText(`${theme.name.toUpperCase()} AWARD`, W / 2, 890);
+
+  // Footer date
+  const d = new Date();
+  const dateStr = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  ctx.fillStyle = theme.text;
+  ctx.font = '22px Georgia, serif';
+  ctx.fillText(dateStr, W / 2, 950);
+
+  // Trigger download
+  const safeName = name.replace(/[^a-z0-9_\- ]/gi, '').trim().replace(/\s+/g, '_') || 'player';
+  const link = document.createElement('a');
+  link.download = `${safeName}_${theme.name.toLowerCase()}_certificate.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function clearTimers() {
+  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  if (state.pointRafId) { cancelAnimationFrame(state.pointRafId); state.pointRafId = null; }
+  document.getElementById('timer-display').classList.add('hidden');
+  document.getElementById('timer-display').classList.remove('urgent');
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ---- Input ----
+document.querySelectorAll('.buzzer').forEach(b => {
+  b.addEventListener('click', () => buzzIn(parseInt(b.dataset.player, 10)));
+});
+
+document.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (PLAYER_FOR_KEY[k] != null) {
+    buzzIn(PLAYER_FOR_KEY[k]);
+  } else if (state.phase === 'answer' && /^[1-4]$/.test(k)) {
+    handleAnswer(parseInt(k, 10) - 1);
+  }
+});
+
+// ---- Play again ----
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  document.getElementById('confetti-container').innerHTML = '';
+  state.numPlayers = 0;
+  state.mode = 'normal';
+  show('players-screen');
+});
+
+// ---- High Scores screen ----
+function openHighScores() {
+  const bests = loadBests();
+  const entries = Object.values(bests)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  const list = document.getElementById('highscores-list');
+  const empty = document.getElementById('highscores-empty');
+  list.innerHTML = '';
+
+  if (entries.length === 0) {
+    list.style.display = 'none';
+    empty.style.display = 'block';
+  } else {
+    list.style.display = '';
+    empty.style.display = 'none';
+    const medals = ['🥇', '🥈', '🥉', '4', '5'];
+    entries.forEach((e, i) => {
+      const place = i + 1;
+      const dateStr = e.date ? new Date(e.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      const meta = [e.mode, e.timedScoring ? 'Timed Scoring' : null, dateStr].filter(Boolean).join(' · ');
+      const li = document.createElement('li');
+      li.className = `rank-${place}`;
+      li.innerHTML = `
+        <span class="hs-place">${medals[i] || place}</span>
+        <span class="hs-name">${escapeHtml(e.name)}<span class="hs-meta">${escapeHtml(meta)}</span></span>
+        <span class="hs-score">${e.score} pts</span>
+      `;
+      list.appendChild(li);
+    });
+  }
+  show('highscores-screen');
+}
+
+document.getElementById('open-highscores-btn').addEventListener('click', openHighScores);
+document.getElementById('highscores-back-btn').addEventListener('click', () => show('players-screen'));
+
+// ---- Rules screen ----
+function openRules() {
+  const list = document.getElementById('rules-list');
+  list.innerHTML = '';
+  RULES.forEach(rule => {
+    const li = document.createElement('li');
+    li.textContent = rule;
+    list.appendChild(li);
+  });
+  show('rules-screen');
+}
+document.getElementById('open-rules-btn').addEventListener('click', openRules);
+document.getElementById('rules-back-btn').addEventListener('click', () => show('players-screen'));
+document.getElementById('clear-bests-btn').addEventListener('click', () => {
+  if (confirm('Clear all saved high scores? This cannot be undone.')) {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    openHighScores();
+  }
+});
+
+// ---- Mute button ----
+(function initMute() {
+  let m = false;
+  try { m = localStorage.getItem(MUTE_KEY) === '1'; } catch {}
+  audio.setMuted(m);
+  document.getElementById('mute-btn').addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    if (!audio.muted) audio.tone(660, 0.08, 'triangle', 0.2);
+  });
+})();
+</script>
+</body>
+</html>
