@@ -1,0 +1,3030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FAKE//VM :: Linux Sandbox</title>
+<style>
+  :root {
+    --bg: #050807;
+    --panel: #0a1410;
+    --green: #39ff14;
+    --green-dim: #1f8a0c;
+    --amber: #ffb000;
+    --red: #ff3b3b;
+    --orange: #e95420;
+    --orange-dim: #8a2f10;
+    --grid: rgba(57,255,20,0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--green);
+    font-family: "Courier New", ui-monospace, Menlo, monospace;
+    overflow: hidden;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0/24px 24px,
+      radial-gradient(ellipse at center, rgba(0,40,0,0.35), #000 80%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.25) 3px,
+      rgba(0,0,0,0) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+    mix-blend-mode: multiply;
+  }
+  #app { position: relative; z-index: 1; height: 100%; }
+
+  /* ---------- HOME ---------- */
+  #home {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .title {
+    font-size: 42px;
+    letter-spacing: 8px;
+    text-shadow: 0 0 8px var(--green), 0 0 24px var(--green-dim);
+    margin: 12px 0 4px;
+  }
+  .subtitle {
+    color: var(--green-dim);
+    letter-spacing: 4px;
+    margin-bottom: 36px;
+  }
+  .vm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 22px;
+    width: 100%;
+    max-width: 900px;
+  }
+  .vm-card {
+    background: var(--panel);
+    border: 1px solid var(--green-dim);
+    padding: 28px 24px;
+    cursor: pointer;
+    transition: transform .12s, box-shadow .12s, border-color .12s;
+    position: relative;
+    text-align: center;
+  }
+  .vm-card:hover {
+    transform: translateY(-3px);
+  }
+  .vm-card.kali { border-color: var(--green-dim); }
+  .vm-card.kali:hover {
+    border-color: var(--green);
+    box-shadow: 0 0 22px rgba(57,255,20,0.4);
+  }
+  .vm-card.kali h3 { color: var(--green); text-shadow: 0 0 8px var(--green); }
+  .vm-card.ubuntu { border-color: var(--orange-dim); }
+  .vm-card.ubuntu:hover {
+    border-color: var(--orange);
+    box-shadow: 0 0 22px rgba(233,84,32,0.4);
+  }
+  .vm-card.ubuntu h3 { color: var(--orange); text-shadow: 0 0 8px var(--orange); }
+  .vm-card .logo {
+    font-size: 64px;
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+  .vm-card h3 {
+    margin: 0 0 8px;
+    letter-spacing: 4px;
+    font-size: 22px;
+  }
+  .vm-card p {
+    margin: 0 0 10px;
+    color: #9ad99a;
+    font-size: 13px;
+  }
+  .vm-card.ubuntu p { color: #d8a896; }
+  .vm-card .meta {
+    color: var(--green-dim);
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin-top: 10px;
+  }
+  .vm-card.ubuntu .meta { color: var(--orange-dim); }
+  .vm-card.gnome { border-color: rgba(127,170,255,0.3); }
+  .vm-card.gnome:hover {
+    border-color: #7faaff;
+    box-shadow: 0 0 22px rgba(127,170,255,0.4);
+  }
+  .vm-card.gnome h3 { color: #7faaff; text-shadow: 0 0 8px #7faaff; }
+  .vm-card.gnome p { color: #b9c8e0; }
+  .vm-card.gnome .meta { color: rgba(127,170,255,0.6); }
+
+  /* ---------- GUI DESKTOP ---------- */
+  #desktop {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 25% 18%, rgba(127,170,255,0.18), transparent 45%),
+      radial-gradient(circle at 78% 82%, rgba(186,127,255,0.16), transparent 50%),
+      linear-gradient(135deg, #1a1a2e 0%, #2d1b4e 50%, #16213e 100%);
+    overflow: hidden;
+    font-family: "Cantarell", "Ubuntu", "Helvetica Neue", sans-serif;
+  }
+  #desktop.show { display: block; }
+  #desktop::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 3px,
+      rgba(0,0,0,0.06) 4px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+  .topbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 30px;
+    background: rgba(0,0,0,0.88);
+    color: #eee;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-size: 13px;
+    z-index: 300;
+    user-select: none;
+  }
+  .topbar .activities {
+    cursor: pointer; padding: 4px 12px; border-radius: 4px;
+    font-weight: 600;
+  }
+  .topbar .activities:hover { background: rgba(255,255,255,0.12); }
+  .topbar .app-title { margin-left: 14px; color: #aaa; font-size: 12px; }
+  .topbar .spacer { flex: 1; }
+  .topbar .clock { font-weight: 600; cursor: default; padding: 0 14px; }
+  .topbar .status { display: flex; gap: 14px; font-size: 14px; }
+  .topbar .status .ic { cursor: pointer; }
+  .topbar .status .ic:hover { color: #7faaff; }
+
+  .desktop-icons {
+    position: absolute;
+    top: 50px; left: 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 96px);
+    grid-auto-rows: 108px;
+    gap: 8px;
+    z-index: 5;
+    max-width: 60%;
+  }
+  .dicon {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    padding: 10px 6px;
+    cursor: pointer;
+    border-radius: 6px;
+    user-select: none;
+    transition: background 0.1s;
+  }
+  .dicon:hover { background: rgba(127,170,255,0.18); }
+  .dicon .glyph {
+    font-size: 42px;
+    line-height: 1;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  }
+  .dicon .label {
+    font-size: 12px;
+    color: #fff;
+    text-align: center;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+    line-height: 1.2;
+  }
+
+  .window-layer {
+    position: absolute;
+    top: 30px; left: 0; right: 0; bottom: 60px;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .window {
+    position: absolute;
+    pointer-events: auto;
+    background: #2d2d3a;
+    border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+    display: flex;
+    flex-direction: column;
+    min-width: 320px;
+    min-height: 220px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .window.focused {
+    box-shadow: 0 14px 50px rgba(0,0,0,0.85);
+    border-color: rgba(127,170,255,0.25);
+  }
+  .window.minimized { display: none; }
+  .window-header {
+    background: #1f1f28;
+    color: #ddd;
+    padding: 7px 10px;
+    cursor: move;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+    font-size: 13px;
+  }
+  .window.focused .window-header { background: #2a2a35; color: #fff; }
+  .window-header .title { flex: 1; font-weight: 600; padding-left: 4px; }
+  .window-controls { display: flex; gap: 6px; }
+  .win-btn {
+    width: 14px; height: 14px;
+    border-radius: 50%; border: none;
+    cursor: pointer;
+    padding: 0;
+    color: transparent;
+    font-size: 9px;
+    line-height: 14px;
+    text-align: center;
+  }
+  .win-btn.min { background: #fbbf24; }
+  .win-btn.max { background: #34d399; }
+  .win-btn.close { background: #f87171; }
+  .win-btn:hover { color: rgba(0,0,0,0.55); }
+  .window-body {
+    flex: 1;
+    overflow: auto;
+    background: #1e1e28;
+    color: #ddd;
+    position: relative;
+  }
+  .window .terminal {
+    border: none !important;
+    box-shadow: none !important;
+    height: 100%;
+    border-radius: 0;
+  }
+  .window .terminal .term-bar { display: none; }
+
+  .dock {
+    position: absolute;
+    bottom: 8px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.65);
+    border-radius: 14px;
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    z-index: 200;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .dock-item {
+    width: 40px; height: 40px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #fff;
+    font-size: 22px;
+    position: relative;
+    transition: background 0.12s, transform 0.12s;
+  }
+  .dock-item:hover { background: rgba(255,255,255,0.18); transform: translateY(-2px); }
+  .dock-item.active::after {
+    content: "";
+    position: absolute;
+    bottom: -5px; left: 50%;
+    transform: translateX(-50%);
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #7faaff;
+  }
+  .dock-tip {
+    position: absolute;
+    bottom: 48px;
+    background: rgba(0,0,0,0.9);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .dock-item:hover .dock-tip { opacity: 1; }
+
+  /* Activities overlay */
+  .activities-overlay {
+    position: absolute; inset: 30px 0 0 0;
+    background: rgba(20,20,30,0.92);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 250;
+    backdrop-filter: blur(8px);
+  }
+  .activities-overlay.show { display: flex; }
+  .activities-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 120px);
+    gap: 18px;
+  }
+  .activities-grid .dicon { background: rgba(255,255,255,0.05); }
+  .activities-grid .dicon .glyph { font-size: 54px; }
+
+  /* Files app */
+  .files-app { display: flex; flex-direction: column; height: 100%; }
+  .files-toolbar {
+    background: #2a2a35; padding: 8px 12px;
+    display: flex; gap: 8px; align-items: center;
+    border-bottom: 1px solid #15151c;
+  }
+  .files-toolbar button {
+    background: #3a3a48; color: #ddd; border: none;
+    padding: 5px 12px; border-radius: 4px; cursor: pointer;
+    font-size: 13px;
+  }
+  .files-toolbar button:hover { background: #4a4a58; }
+  .files-toolbar button:disabled { opacity: 0.4; cursor: default; }
+  .files-path {
+    flex: 1; background: #15151c; color: #ddd;
+    padding: 5px 10px; border-radius: 4px;
+    font-family: "Courier New", monospace; font-size: 12px;
+  }
+  .files-list {
+    flex: 1; padding: 14px; overflow: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 84px);
+    gap: 6px;
+    align-content: start;
+  }
+  .file-entry {
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: 8px 4px;
+    cursor: pointer;
+    border-radius: 4px;
+    user-select: none;
+  }
+  .file-entry:hover { background: rgba(127,170,255,0.18); }
+  .file-entry .icon { font-size: 32px; line-height: 1; }
+  .file-entry.dir .icon { color: #7faaff; }
+  .file-entry.file .icon { color: #aaa; }
+  .file-entry .name {
+    font-size: 11px; text-align: center;
+    word-break: break-all; margin-top: 4px;
+    color: #ddd; line-height: 1.2;
+  }
+
+  /* Editor app */
+  .editor-app { display: flex; flex-direction: column; height: 100%; }
+  .editor-toolbar {
+    background: #2a2a35; padding: 8px 12px;
+    display: flex; gap: 8px; align-items: center;
+    border-bottom: 1px solid #15151c;
+  }
+  .editor-toolbar button {
+    background: #3a3a48; color: #ddd; border: none;
+    padding: 5px 12px; border-radius: 4px; cursor: pointer;
+    font-size: 13px;
+  }
+  .editor-toolbar button:hover { background: #4a4a58; }
+  .editor-toolbar input {
+    flex: 1; background: #15151c; color: #ddd;
+    border: 1px solid #3a3a48; padding: 5px 10px;
+    border-radius: 4px;
+    font-family: "Courier New", monospace; font-size: 12px;
+  }
+  .editor-textarea {
+    flex: 1; background: #1e1e28; color: #ddd;
+    border: none; padding: 14px;
+    font-family: "Courier New", monospace; font-size: 13px;
+    resize: none; outline: none; line-height: 1.5;
+  }
+  .editor-status {
+    background: #15151c; color: #888;
+    padding: 4px 12px; font-size: 11px;
+  }
+
+  /* Browser app */
+  .browser-app { display: flex; flex-direction: column; height: 100%; }
+  .browser-bar {
+    background: #2a2a35; padding: 8px 12px;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .browser-bar button {
+    background: #3a3a48; color: #ddd; border: none;
+    width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+  }
+  .browser-bar input {
+    flex: 1; background: #15151c; color: #ddd;
+    border: 1px solid #3a3a48; padding: 6px 14px;
+    border-radius: 15px; font-size: 13px;
+  }
+  .browser-view {
+    flex: 1; background: #fff; color: #222;
+    padding: 30px 40px; overflow: auto;
+    font-family: Georgia, serif; line-height: 1.6;
+  }
+  .browser-view h1 { color: #1a73e8; }
+  .browser-view a { color: #1a73e8; text-decoration: none; cursor: pointer; }
+  .browser-view a:hover { text-decoration: underline; }
+  .browser-view .search-results { margin-top: 20px; }
+  .browser-view .result { padding: 10px 0; border-bottom: 1px solid #eee; }
+  .browser-view .result-title { color: #1a73e8; font-size: 18px; }
+  .browser-view .result-url { color: #006621; font-size: 12px; }
+  .browser-view .result-snippet { color: #555; margin-top: 4px; }
+
+  /* Settings app */
+  .settings-app { padding: 24px; color: #ddd; }
+  .settings-app h2 { color: #7faaff; margin-top: 0; }
+  .settings-app dl {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 10px 14px;
+    font-size: 14px;
+  }
+  .settings-app dt { color: #888; }
+  .settings-app dd { margin: 0; color: #ddd; font-family: monospace; }
+
+  /* About app */
+  .about-app {
+    padding: 30px;
+    text-align: center;
+    color: #ddd;
+  }
+  .about-app .big {
+    font-size: 72px;
+    margin: 0;
+    color: #7faaff;
+    text-shadow: 0 0 20px rgba(127,170,255,0.5);
+  }
+  .about-app h2 { color: #7faaff; margin: 6px 0; }
+  .about-app .ver { color: #888; font-size: 13px; }
+  .about-app .info { margin-top: 20px; font-size: 13px; line-height: 1.8; }
+
+  /* Power menu */
+  .power-menu {
+    position: absolute;
+    top: 32px; right: 14px;
+    background: rgba(20,20,30,0.96);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 6px;
+    display: none;
+    z-index: 400;
+    min-width: 180px;
+    backdrop-filter: blur(10px);
+  }
+  .power-menu.show { display: block; }
+  .power-menu button {
+    display: block; width: 100%;
+    background: transparent; color: #ddd;
+    border: none; padding: 8px 12px;
+    text-align: left; cursor: pointer;
+    font-size: 13px; border-radius: 4px;
+    font-family: inherit;
+  }
+  .power-menu button:hover { background: rgba(127,170,255,0.2); color: #fff; }
+  .power-menu hr {
+    border: none; border-top: 1px solid rgba(255,255,255,0.1);
+    margin: 4px 0;
+  }
+  .legal {
+    margin: 36px 0 8px;
+    color: #4a6e4a;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-align: center;
+    max-width: 760px;
+  }
+
+  /* ---------- VM VIEW ---------- */
+  #vm { display: none; height: 100%; padding: 16px; }
+  .vm-wrap {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+    height: 100%;
+  }
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .btn {
+    background: transparent;
+    color: var(--green);
+    border: 1px solid var(--green-dim);
+    padding: 6px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: background .12s, color .12s, box-shadow .12s;
+  }
+  .btn:hover { background: var(--green); color: #000; box-shadow: 0 0 12px var(--green); }
+  .btn.danger { color: var(--red); border-color: var(--red); }
+  .btn.danger:hover { background: var(--red); color: #000; box-shadow: 0 0 12px var(--red); }
+  .btn.amber { color: var(--amber); border-color: var(--amber); }
+  .btn.amber:hover { background: var(--amber); color: #000; box-shadow: 0 0 12px var(--amber); }
+  .btn.orange { color: var(--orange); border-color: var(--orange); }
+  .btn.orange:hover { background: var(--orange); color: #000; box-shadow: 0 0 12px var(--orange); }
+
+  .distro-tag {
+    margin-left: auto;
+    color: var(--amber);
+    letter-spacing: 2px;
+    font-size: 13px;
+  }
+
+  /* terminal window */
+  .terminal {
+    background: #000;
+    border: 1px solid var(--green-dim);
+    box-shadow: 0 0 22px rgba(57,255,20,0.25) inset, 0 0 22px rgba(57,255,20,0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .terminal.ubuntu {
+    border-color: var(--orange-dim);
+    box-shadow: 0 0 22px rgba(233,84,32,0.18) inset, 0 0 22px rgba(233,84,32,0.12);
+  }
+  .term-bar {
+    background: linear-gradient(#0a1a10, #06100a);
+    border-bottom: 1px solid var(--green-dim);
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    gap: 8px;
+    font-size: 12px;
+    color: #9ad99a;
+  }
+  .terminal.ubuntu .term-bar {
+    background: linear-gradient(#2c0e06, #170703);
+    border-bottom-color: var(--orange-dim);
+    color: #e7b8a0;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display:inline-block; }
+  .dot.r { background:#ff5f56; } .dot.y { background:#ffbd2e; } .dot.g { background:#27c93f; }
+  .term-title { margin-left: 8px; letter-spacing: 2px; }
+  .term-body {
+    flex: 1;
+    padding: 10px 14px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .term-body .line { display: block; }
+  .term-body .ok { color: #6cff6c; }
+  .term-body .warn { color: var(--amber); }
+  .term-body .bad { color: var(--red); }
+  .term-body .dim { color: #4a8a4a; }
+  .input-line {
+    display: flex;
+    padding: 6px 14px 12px;
+    background: #000;
+    border-top: 1px solid #0d2a16;
+  }
+  .terminal.ubuntu .input-line { border-top-color: #3a160a; }
+  .prompt { color: var(--amber); margin-right: 6px; white-space: nowrap; }
+  .prompt .user { color: var(--green); }
+  .prompt .at { color: #6cff6c; }
+  .prompt .host { color: var(--green); }
+  .prompt .path { color: #9ad99a; }
+  .prompt.ubuntu .user { color: var(--orange); }
+  .prompt.ubuntu .at, .prompt.ubuntu .host { color: var(--orange); }
+  .prompt.ubuntu .path { color: #e7b8a0; }
+  #cmd {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--green);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    caret-color: var(--green);
+  }
+  .terminal.ubuntu #cmd { color: var(--orange); caret-color: var(--orange); }
+
+  /* ---------- SUDO SETUP MODAL ---------- */
+  .modal-back {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.78);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+  }
+  .modal-back.show { display: flex; }
+  .modal {
+    width: min(480px, 92vw);
+    background: var(--panel);
+    border: 1px solid var(--green);
+    box-shadow: 0 0 30px rgba(57,255,20,0.35);
+    display: flex;
+    flex-direction: column;
+  }
+  .modal header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--green-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: 2px;
+    color: var(--green);
+  }
+  .modal .content {
+    padding: 16px 20px;
+    color: #c7f0c7;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .modal label {
+    display: block;
+    color: var(--green-dim);
+    letter-spacing: 2px;
+    font-size: 11px;
+    margin: 12px 0 4px;
+  }
+  .modal input {
+    width: 100%;
+    background: #000;
+    border: 1px solid var(--green-dim);
+    color: var(--green);
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+  }
+  .modal input:focus { border-color: var(--green); box-shadow: 0 0 10px rgba(57,255,20,0.4); }
+  .modal .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .modal .actions .btn { flex: 1; }
+  .modal .status {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #4a8a4a;
+    min-height: 16px;
+  }
+  .modal .status.bad { color: var(--red); }
+  .modal .status.ok { color: #6cff6c; }
+  .closex {
+    background: transparent;
+    border: 1px solid var(--green-dim);
+    color: var(--green);
+    cursor: pointer;
+    padding: 2px 8px;
+  }
+
+  /* blink */
+  .blink::after {
+    content: "▍";
+    animation: blink 1s steps(1) infinite;
+    margin-left: 2px;
+    color: var(--green);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* DESTROYED overlay */
+  #destroyed {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.92);
+    color: var(--red);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 5000;
+    text-shadow: 0 0 10px var(--red);
+    padding: 24px;
+    text-align: center;
+  }
+  #destroyed.show { display: flex; }
+  #destroyed h1 {
+    font-size: 72px;
+    letter-spacing: 12px;
+    margin: 0;
+    animation: glitch 0.15s steps(2) infinite;
+  }
+  @keyframes glitch {
+    0% { transform: translate(0,0); }
+    25% { transform: translate(-2px,1px); }
+    50% { transform: translate(2px,-1px); }
+    75% { transform: translate(-1px,-2px); }
+    100% { transform: translate(1px,2px); }
+  }
+  #destroyed p {
+    color: var(--amber);
+    letter-spacing: 4px;
+    margin: 18px 0;
+  }
+  #destroyed .stack {
+    color: #4a8a4a;
+    font-size: 11px;
+    letter-spacing: 1px;
+    max-width: 720px;
+    margin: 8px auto 24px;
+    text-align: left;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HOME -->
+  <section id="home">
+    <div class="title blink">FAKE//VM</div>
+    <div class="subtitle">&gt; pick a distro &gt; boot &gt; do unwise things</div>
+    <div class="vm-grid">
+      <div class="vm-card kali" data-distro="kali">
+        <div class="logo">⌬</div>
+        <h3>KALI LINUX</h3>
+        <p>Penetration testing distribution</p>
+        <div class="meta">ROLLING · 6.5.0-KALI3-AMD64</div>
+      </div>
+      <div class="vm-card ubuntu" data-distro="ubuntu">
+        <div class="logo">◉</div>
+        <h3>UBUNTU LINUX</h3>
+        <p>General-purpose GNU/Linux</p>
+        <div class="meta">22.04 LTS · JAMMY JELLYFISH</div>
+      </div>
+      <div class="vm-card gnome" data-distro="gnome">
+        <div class="logo">◈</div>
+        <h3>GNOME LINUX</h3>
+        <p>GUI desktop · windows, icons, mouse</p>
+        <div class="meta">45 · WAYLAND</div>
+      </div>
+    </div>
+    <div class="legal">
+      // Sandboxed simulation. Filesystem lives in your browser tab. Refresh = clean install. //<br/>
+      // Yes, you can <code>sudo rm -rf --no-preserve-root /</code>. Go ahead. //
+    </div>
+  </section>
+
+  <!-- SUDO SETUP MODAL -->
+  <div class="modal-back" id="sudoSetup">
+    <div class="modal">
+      <header>
+        <span id="sudoHeader">// CONFIGURE SUDO</span>
+        <button class="closex" id="sudoCancel">X</button>
+      </header>
+      <div class="content">
+        <div>Set a password for <code id="sudoUser">user</code> · used whenever you run <code>sudo</code>.</div>
+        <label>SUDO PASSWORD</label>
+        <input id="sudoPass1" type="password" autocomplete="new-password" />
+        <label>CONFIRM PASSWORD</label>
+        <input id="sudoPass2" type="password" autocomplete="new-password" />
+        <div class="status" id="sudoStatus">// leave blank to disable password (passwordless sudo)</div>
+        <div class="actions">
+          <button class="btn amber" id="sudoSkip">[ SKIP — NO PW ]</button>
+          <button class="btn" id="sudoConfirm">[ SET &amp; BOOT ]</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VM VIEW -->
+  <section id="vm">
+    <div class="vm-wrap">
+      <div class="toolbar">
+        <button class="btn danger" id="powerBtn">[ POWER OFF ]</button>
+        <button class="btn amber" id="rebootBtn">[ REBOOT ]</button>
+        <span class="distro-tag" id="distroTag"></span>
+      </div>
+      <div class="terminal" id="terminal">
+        <div class="term-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="term-title" id="termTitle">user@kali: ~</span>
+        </div>
+        <div class="term-body" id="term"></div>
+        <div class="input-line">
+          <span class="prompt" id="prompt"></span>
+          <input id="cmd" autocomplete="off" spellcheck="false" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GUI DESKTOP -->
+  <section id="desktop">
+    <div class="topbar">
+      <span class="activities" id="activitiesBtn">≡ Activities</span>
+      <span class="app-title" id="topAppTitle">Desktop</span>
+      <span class="spacer"></span>
+      <span class="clock" id="topClock">--:--</span>
+      <span class="status">
+        <span class="ic">🔊</span>
+        <span class="ic">📶</span>
+        <span class="ic" id="powerMenuBtn">⏻</span>
+      </span>
+    </div>
+    <div class="power-menu" id="powerMenu">
+      <button id="pm_terminal">Open Terminal</button>
+      <button id="pm_files">Open Files</button>
+      <hr/>
+      <button id="pm_reboot">Restart</button>
+      <button id="pm_shutdown">Power Off</button>
+    </div>
+    <div class="desktop-icons" id="desktopIcons"></div>
+    <div class="window-layer" id="windowLayer"></div>
+    <div class="activities-overlay" id="activitiesOverlay">
+      <div class="activities-grid" id="activitiesGrid"></div>
+    </div>
+    <div class="dock" id="dock"></div>
+  </section>
+
+  <!-- DESTROYED OVERLAY -->
+  <div id="destroyed">
+    <h1>KERNEL PANIC</h1>
+    <p id="destroyedSub">// not syncing: VFS: Unable to mount root fs on unknown-block(0,0)</p>
+    <div class="stack" id="destroyedStack"></div>
+    <button class="btn danger" id="destroyedReboot">[ HARD REBOOT ]</button>
+  </div>
+</div>
+
+<script>
+/* ===================== DISTRO PROFILES ===================== */
+const DISTROS = {
+  kali: {
+    id: "kali",
+    name: "Kali Linux",
+    hostname: "kali",
+    defaultUser: "kali",
+    promptClass: "",
+    termClass: "",
+    osRelease: 'PRETTY_NAME="Kali GNU/Linux Rolling"\nNAME="Kali GNU/Linux"\nID=kali\nVERSION="2024.1"\nVERSION_ID="2024.1"\nVERSION_CODENAME=kali-rolling\nID_LIKE=debian\nHOME_URL="https://www.kali.org/"\n',
+    uname: "Linux kali 6.5.0-kali3-amd64 #1 SMP PREEMPT_DYNAMIC Kali 6.5.6-1kali1 (2023-10-09) x86_64 GNU/Linux",
+    motd: [
+      "┌──(USER㉿HOST)-[~]",
+      "└─$ session started // ISO",
+      "",
+      "The programs included with the Kali GNU/Linux system are free software;",
+      "the exact distribution terms for each program are described in the",
+      "individual files in /usr/share/doc/*/copyright.",
+      "",
+      "Kali GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent",
+      "permitted by applicable law.",
+      ""
+    ],
+    extraBin: ["nmap","hydra","john","msfconsole","sqlmap","aircrack-ng","wpscan","nikto","gobuster","searchsploit","metasploit","wireshark","burpsuite"],
+    extraDirs: {
+      "usr": { share: { wordlists: { "rockyou.txt": "(symlink to /usr/share/wordlists/rockyou.txt.gz)\n" } } }
+    }
+  },
+  ubuntu: {
+    id: "ubuntu",
+    name: "Ubuntu Linux",
+    hostname: "ubuntu",
+    defaultUser: "user",
+    promptClass: "ubuntu",
+    termClass: "ubuntu",
+    osRelease: 'PRETTY_NAME="Ubuntu 22.04.3 LTS"\nNAME="Ubuntu"\nVERSION_ID="22.04"\nVERSION="22.04.3 LTS (Jammy Jellyfish)"\nVERSION_CODENAME=jammy\nID=ubuntu\nID_LIKE=debian\nHOME_URL="https://www.ubuntu.com/"\n',
+    uname: "Linux ubuntu 6.2.0-26-generic #26-Ubuntu SMP PREEMPT_DYNAMIC Wed Jul 12 11:42:18 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux",
+    motd: [
+      "Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 6.2.0-26-generic x86_64)",
+      "",
+      " * Documentation:  https://help.ubuntu.com",
+      " * Management:     https://landscape.canonical.com",
+      " * Support:        https://ubuntu.com/advantage",
+      "",
+      "  System information as of " + new Date().toUTCString(),
+      "",
+      "  System load:  0.08              Processes:             127",
+      "  Usage of /:   2.1% of 19.56GB   Users logged in:       1",
+      "  Memory usage: 11%               IPv4 address for eth0: 10.0.2.15",
+      "  Swap usage:   0%",
+      ""
+    ],
+    extraBin: ["snap","ufw","apt"],
+    extraDirs: {}
+  },
+  gnome: {
+    id: "gnome",
+    name: "GNOME Linux",
+    hostname: "gnome",
+    defaultUser: "user",
+    promptClass: "",
+    termClass: "",
+    gui: true,
+    osRelease: 'PRETTY_NAME="GNOME Linux 45"\nNAME="GNOME Linux"\nID=gnome\nVERSION="45"\nVERSION_ID="45"\nVERSION_CODENAME=jasper\nID_LIKE=fedora\nHOME_URL="https://os.gnome.org/"\n',
+    uname: "Linux gnome 6.5.6-300.fc39.x86_64 #1 SMP PREEMPT_DYNAMIC Fri Oct 13 10:18:12 UTC 2023 x86_64 GNU/Linux",
+    motd: [
+      "Welcome to GNOME Linux 45 (Jasper)",
+      "",
+      " * Desktop:        GNOME 45",
+      " * Display server: Wayland",
+      ""
+    ],
+    extraBin: ["gnome-terminal","gnome-shell","gedit","nautilus","gnome-control-center","wayland-info"],
+    extraDirs: {}
+  }
+};
+
+/* ===================== VIRTUAL FILESYSTEM ===================== */
+function buildFS(distro, user) {
+  const homeDir = (name, extra) => ({
+    type: "d", children: Object.assign({
+      ".bashrc": { type: "f", content: "# ~/.bashrc\nalias ll='ls -alF'\nalias la='ls -A'\nalias l='ls -CF'\nexport PS1='\\u@\\h:\\w\\$ '\n" },
+      ".profile": { type: "f", content: "# ~/.profile\n" },
+      ".bash_history": { type: "f", content: "" },
+      "Documents": { type: "d", children: {} },
+      "Downloads": { type: "d", children: {} },
+      "Desktop": { type: "d", children: {} },
+      "Pictures": { type: "d", children: {} }
+    }, extra || {})
+  });
+
+  const fs = {
+    "/": {
+      type: "d", children: {
+        "bin": { type: "d", children: binDir(distro) },
+        "boot": { type: "d", children: {
+          "vmlinuz": { type: "f", content: "<binary kernel image>\n" },
+          "initrd.img": { type: "f", content: "<binary initrd image>\n" },
+          "grub": { type: "d", children: { "grub.cfg": { type: "f", content: "# auto-generated, do not edit\nset default=0\nset timeout=5\n" } } }
+        }},
+        "dev": { type: "d", children: {
+          "null": { type: "f", content: "" },
+          "zero": { type: "f", content: "" },
+          "random": { type: "f", content: "" },
+          "sda": { type: "f", content: "<block device>\n" },
+          "sda1": { type: "f", content: "<block device>\n" }
+        }},
+        "etc": { type: "d", children: {
+          "passwd": { type: "f", content: passwdContent(distro, user) },
+          "shadow": { type: "f", content: "root:!:19700:0:99999:7:::\n" + user + ":!:19700:0:99999:7:::\n", perm: "root" },
+          "hostname": { type: "f", content: distro.hostname + "\n" },
+          "hosts": { type: "f", content: "127.0.0.1\tlocalhost\n127.0.1.1\t" + distro.hostname + "\n" },
+          "os-release": { type: "f", content: distro.osRelease },
+          "issue": { type: "f", content: distro.name + " \\n \\l\n" },
+          "motd": { type: "f", content: distro.motd.join("\n") + "\n" },
+          "fstab": { type: "f", content: "# /etc/fstab\nUUID=ea7d4c81 / ext4 errors=remount-ro 0 1\n" },
+          "resolv.conf": { type: "f", content: "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" }
+        }},
+        "home": { type: "d", children: {
+          [user]: homeDir(user, {
+            "readme.txt": { type: "f", content: "Welcome to your fake VM!\n\nTry: ls, cd, cat, mkdir, touch, rm, echo, sudo, apt, ping, nmap, neofetch...\n\nIf you're feeling reckless: sudo rm -rf --no-preserve-root /\n" }
+          })
+        }},
+        "lib": { type: "d", children: {} },
+        "media": { type: "d", children: {} },
+        "mnt": { type: "d", children: {} },
+        "opt": { type: "d", children: {} },
+        "proc": { type: "d", children: {
+          "cpuinfo": { type: "f", content: "processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz\ncpu MHz\t\t: 2592.000\ncache size\t: 12288 KB\n" },
+          "meminfo": { type: "f", content: "MemTotal:        8123456 kB\nMemFree:         5234123 kB\nMemAvailable:    6543210 kB\n" },
+          "version": { type: "f", content: distro.uname + "\n" }
+        }},
+        "root": { type: "d", perm: "root", children: {
+          ".bash_history": { type: "f", content: "", perm: "root" },
+          "secret.txt": { type: "f", perm: "root", content: "flag{you_made_it_to_root}\nthe quick brown fox jumps over the lazy dog\n" }
+        }},
+        "run": { type: "d", children: {} },
+        "sbin": { type: "d", children: {
+          "shutdown": { type: "f", content: "<elf binary>\n" },
+          "reboot": { type: "f", content: "<elf binary>\n" },
+          "init": { type: "f", content: "<elf binary>\n" }
+        }},
+        "srv": { type: "d", children: {} },
+        "sys": { type: "d", children: {} },
+        "tmp": { type: "d", children: {} },
+        "usr": { type: "d", children: {
+          "bin": { type: "d", children: usrBinDir(distro) },
+          "lib": { type: "d", children: {} },
+          "local": { type: "d", children: { "bin": { type: "d", children: {} } } },
+          "sbin": { type: "d", children: {} },
+          "share": { type: "d", children: Object.assign({
+            "doc": { type: "d", children: {} },
+            "man": { type: "d", children: {} }
+          }, (distro.extraDirs.usr || {}).share || {}) }
+        }},
+        "var": { type: "d", children: {
+          "log": { type: "d", children: {
+            "syslog": { type: "f", content: "Jan  1 00:00:00 " + distro.hostname + " systemd[1]: Started Daily apt activities.\n" },
+            "auth.log": { type: "f", content: "Jan  1 00:00:00 " + distro.hostname + " systemd-logind[420]: New session 1 of user " + user + ".\n" }
+          }},
+          "cache": { type: "d", children: {} },
+          "tmp": { type: "d", children: {} }
+        }}
+      }
+    }
+  };
+  return fs;
+}
+
+function binDir(distro) {
+  const core = ["ls","cat","cp","mv","rm","mkdir","rmdir","touch","echo","ln","chmod","chown","pwd","cd","grep","find","head","tail","sort","uniq","wc","sed","awk","tar","gzip","gunzip","ps","kill","ping","date","sleep","true","false","sh","bash","whoami","hostname","uname","id","su","login","mount","umount","more","less","clear","reset"];
+  const out = {};
+  for (const c of core) out[c] = { type: "f", content: "<elf binary>\n" };
+  return out;
+}
+function usrBinDir(distro) {
+  const std = ["sudo","apt","apt-get","curl","wget","ssh","scp","sftp","git","nano","vim","emacs","python3","perl","ruby","node","gcc","make","top","htop","tree","neofetch","screen","tmux","which","whereis","env","history","man","strace","lsof","netstat","ss","dig","host","traceroute","route"];
+  const out = {};
+  for (const c of std) out[c] = { type: "f", content: "<elf binary>\n" };
+  for (const c of (distro.extraBin || [])) out[c] = { type: "f", content: "<elf binary>\n" };
+  return out;
+}
+function passwdContent(distro, user) {
+  return "root:x:0:0:root:/root:/bin/bash\n"
+       + "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n"
+       + "bin:x:2:2:bin:/bin:/usr/sbin/nologin\n"
+       + "sys:x:3:3:sys:/dev:/usr/sbin/nologin\n"
+       + "nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin\n"
+       + user + ":x:1000:1000:" + user + ":/home/" + user + ":/bin/bash\n";
+}
+
+/* ===================== STATE ===================== */
+let state = null;
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+let pendingDistro = null;     // distro selected, waiting for sudo setup
+let inputMode = "normal";     // "normal" | "password" | "passwordSet1" | "passwordSet2"
+let pendingSudoCmd = null;    // queued command awaiting sudo pw
+let sudoFailures = 0;
+let sudoTimestamp = 0;        // last successful sudo, for cache
+const SUDO_CACHE_MS = 5 * 60 * 1000;
+
+/* ===================== HOME ===================== */
+document.querySelectorAll(".vm-card").forEach(card => {
+  card.addEventListener("click", () => {
+    pendingDistro = DISTROS[card.dataset.distro];
+    openSudoSetup();
+  });
+});
+
+/* ===================== SUDO SETUP MODAL ===================== */
+function openSudoSetup() {
+  $("sudoUser").textContent = pendingDistro.defaultUser;
+  $("sudoHeader").textContent = "// CONFIGURE SUDO — " + pendingDistro.name.toUpperCase();
+  $("sudoPass1").value = "";
+  $("sudoPass2").value = "";
+  $("sudoStatus").className = "status";
+  $("sudoStatus").textContent = "// leave blank to disable password (passwordless sudo)";
+  $("sudoSetup").classList.add("show");
+  setTimeout(() => $("sudoPass1").focus(), 50);
+}
+function closeSudoSetup() {
+  $("sudoSetup").classList.remove("show");
+  pendingDistro = null;
+}
+$("sudoCancel").addEventListener("click", closeSudoSetup);
+$("sudoSkip").addEventListener("click", () => bootVM(""));
+$("sudoConfirm").addEventListener("click", () => {
+  const p1 = $("sudoPass1").value;
+  const p2 = $("sudoPass2").value;
+  if (p1 !== p2) {
+    $("sudoStatus").className = "status bad";
+    $("sudoStatus").textContent = "// passwords do not match";
+    return;
+  }
+  bootVM(p1);
+});
+$("sudoPass2").addEventListener("keydown", e => {
+  if (e.key === "Enter") $("sudoConfirm").click();
+});
+$("sudoPass1").addEventListener("keydown", e => {
+  if (e.key === "Enter") $("sudoPass2").focus();
+});
+
+/* ===================== BOOT ===================== */
+async function bootVM(sudoPass) {
+  const distro = pendingDistro;
+  $("sudoSetup").classList.remove("show");
+  $("home").style.display = "none";
+
+  const user = distro.defaultUser;
+  state = {
+    distro,
+    user,
+    isRoot: false,
+    sudoPass,        // "" = passwordless
+    cwd: "/home/" + user,
+    fs: buildFS(distro, user),
+    destroyed: false,
+    history: [],
+    histIdx: -1
+  };
+
+  // theme
+  $("terminal").className = "terminal" + (distro.termClass ? " " + distro.termClass : "");
+  $("prompt").className = "prompt" + (distro.promptClass ? " " + distro.promptClass : "");
+  $("distroTag").textContent = "// " + distro.name + " (" + distro.hostname + ")";
+  $("distroTag").style.color = distro.id === "ubuntu" ? "var(--orange)" : "var(--amber)";
+
+  $("term").innerHTML = "";
+  $("term").style.filter = "";
+  $("cmd").disabled = false;
+  $("cmd").type = "text";
+  inputMode = "normal";
+  pendingSudoCmd = null;
+  sudoTimestamp = 0;
+  updatePrompt();
+
+  // GUI distro: drop into desktop instead of terminal-only view
+  if (distro.gui) {
+    await bootDesktop();
+    return;
+  }
+
+  $("vm").style.display = "block";
+
+  // boot sequence
+  writeLine("[    0.000000] Linux version " + distro.uname.split(" ")[2] + " (gcc 12.2.0)", "dim");
+  await sleep(40);
+  writeLine("[    0.012345] Command line: BOOT_IMAGE=/boot/vmlinuz root=UUID=ea7d4c81 ro quiet splash", "dim");
+  await sleep(40);
+  writeLine("[    0.234567] x86/fpu: Supporting XSAVE feature 0x002: 'SSE registers'", "dim");
+  await sleep(30);
+  writeLine("[    0.456789] Memory: 8123456K/8388608K available", "dim");
+  await sleep(30);
+  writeLine("[    1.000000] systemd[1]: Starting Journal Service...", "dim");
+  await sleep(60);
+  writeLine("[    1.234567] systemd[1]: Started Daily apt activities.", "dim");
+  await sleep(40);
+  writeLine("[    1.456789] systemd[1]: Reached target Multi-User System.", "ok");
+  await sleep(120);
+  writeLine("");
+  for (const line of distro.motd) {
+    writeLine(line
+      .replace("USER", user)
+      .replace("HOST", distro.hostname)
+      .replace("ISO", new Date().toISOString()));
+  }
+  writeLine("Last login: " + new Date().toUTCString() + " on tty1", "dim");
+  writeLine("");
+  $("cmd").focus();
+}
+
+/* ===================== GUI DESKTOP ===================== */
+const DESKTOP_APPS = [
+  { id: "terminal", glyph: "🖥", label: "Terminal", title: "Terminal" },
+  { id: "files",    glyph: "📁", label: "Files",    title: "Files" },
+  { id: "editor",   glyph: "📝", label: "Text Editor", title: "gedit" },
+  { id: "browser",  glyph: "🌐", label: "Web",      title: "Web Browser" },
+  { id: "settings", glyph: "⚙",  label: "Settings", title: "Settings" },
+  { id: "about",    glyph: "ℹ",  label: "About",    title: "About GNOME" }
+];
+
+let windows = {};      // id -> { el, app, x, y }
+let nextWinId = 1;
+let topZ = 100;
+let clockTimer = null;
+
+async function bootDesktop() {
+  rescueTerminal();
+  $("desktop").classList.add("show");
+  $("windowLayer").innerHTML = "";
+  windows = {};
+  nextWinId = 1;
+  topZ = 100;
+
+  // populate desktop icons
+  const di = $("desktopIcons");
+  di.innerHTML = "";
+  DESKTOP_APPS.forEach(app => {
+    const el = document.createElement("div");
+    el.className = "dicon";
+    el.innerHTML = `<div class="glyph">${app.glyph}</div><div class="label">${app.label}</div>`;
+    el.addEventListener("dblclick", () => openApp(app.id));
+    el.addEventListener("click", () => {
+      di.querySelectorAll(".dicon").forEach(d => d.classList.remove("selected"));
+      el.classList.add("selected");
+    });
+    di.appendChild(el);
+  });
+
+  // populate dock
+  const dock = $("dock");
+  dock.innerHTML = "";
+  DESKTOP_APPS.forEach(app => {
+    const el = document.createElement("div");
+    el.className = "dock-item";
+    el.dataset.app = app.id;
+    el.innerHTML = `${app.glyph}<div class="dock-tip">${app.label}</div>`;
+    el.addEventListener("click", () => openApp(app.id));
+    dock.appendChild(el);
+  });
+
+  // activities overlay grid
+  const agrid = $("activitiesGrid");
+  agrid.innerHTML = "";
+  DESKTOP_APPS.forEach(app => {
+    const el = document.createElement("div");
+    el.className = "dicon";
+    el.innerHTML = `<div class="glyph">${app.glyph}</div><div class="label">${app.label}</div>`;
+    el.addEventListener("click", () => {
+      $("activitiesOverlay").classList.remove("show");
+      openApp(app.id);
+    });
+    agrid.appendChild(el);
+  });
+
+  // clock
+  function updateClock() {
+    const d = new Date();
+    const h = d.getHours().toString().padStart(2,"0");
+    const m = d.getMinutes().toString().padStart(2,"0");
+    $("topClock").textContent = h + ":" + m;
+  }
+  updateClock();
+  if (clockTimer) clearInterval(clockTimer);
+  clockTimer = setInterval(updateClock, 15000);
+
+  // welcome window
+  openApp("about");
+}
+
+function teardownDesktop() {
+  $("desktop").classList.remove("show");
+  rescueTerminal();
+  $("windowLayer").innerHTML = "";
+  windows = {};
+  if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+}
+
+function rescueTerminal() {
+  const term = document.getElementById("terminal");
+  const vmWrap = document.querySelector(".vm-wrap");
+  if (term && vmWrap && term.parentElement !== vmWrap) vmWrap.appendChild(term);
+}
+
+/* ----- Activities overlay & power menu ----- */
+$("activitiesBtn").addEventListener("click", () => {
+  $("activitiesOverlay").classList.toggle("show");
+});
+$("activitiesOverlay").addEventListener("click", e => {
+  if (e.target.id === "activitiesOverlay") e.currentTarget.classList.remove("show");
+});
+$("powerMenuBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  $("powerMenu").classList.toggle("show");
+});
+document.addEventListener("click", e => {
+  if (!$("powerMenu").contains(e.target) && e.target.id !== "powerMenuBtn") {
+    $("powerMenu").classList.remove("show");
+  }
+});
+$("pm_terminal").addEventListener("click", () => { $("powerMenu").classList.remove("show"); openApp("terminal"); });
+$("pm_files").addEventListener("click", () => { $("powerMenu").classList.remove("show"); openApp("files"); });
+$("pm_reboot").addEventListener("click", () => { $("powerMenu").classList.remove("show"); $("rebootBtn").click(); });
+$("pm_shutdown").addEventListener("click", () => { $("powerMenu").classList.remove("show"); powerOff(); });
+
+/* ----- Window management ----- */
+function openApp(appId) {
+  // singletons for terminal/files/editor/browser/settings/about — focus if already open
+  for (const id in windows) {
+    if (windows[id].app === appId) {
+      const w = windows[id];
+      w.el.classList.remove("minimized");
+      focusWindow(id);
+      return;
+    }
+  }
+  const app = DESKTOP_APPS.find(a => a.id === appId);
+  if (!app) return;
+  const id = "win_" + (nextWinId++);
+  const win = document.createElement("div");
+  win.className = "window";
+  win.style.left = (60 + (Object.keys(windows).length * 24)) + "px";
+  win.style.top = (40 + (Object.keys(windows).length * 24)) + "px";
+  win.style.width = appId === "terminal" ? "680px" : "640px";
+  win.style.height = appId === "terminal" ? "440px" : "460px";
+  win.innerHTML = `
+    <div class="window-header">
+      <div class="window-controls">
+        <button class="win-btn close" title="Close">×</button>
+        <button class="win-btn min" title="Minimize">_</button>
+        <button class="win-btn max" title="Maximize">□</button>
+      </div>
+      <div class="title">${escapeHtml(app.title)}</div>
+    </div>
+    <div class="window-body" data-app="${appId}"></div>
+  `;
+  $("windowLayer").appendChild(win);
+  windows[id] = { id, el: win, app: appId };
+  win.dataset.id = id;
+
+  // wire controls
+  win.querySelector(".close").addEventListener("click", e => { e.stopPropagation(); closeWindow(id); });
+  win.querySelector(".min").addEventListener("click", e => { e.stopPropagation(); win.classList.add("minimized"); updateDock(); });
+  win.querySelector(".max").addEventListener("click", e => {
+    e.stopPropagation();
+    if (win.dataset.maxed === "1") {
+      win.style.cssText = win.dataset.prevStyle;
+      delete win.dataset.maxed;
+    } else {
+      win.dataset.prevStyle = win.style.cssText;
+      win.style.left = "0"; win.style.top = "0";
+      win.style.width = "100%"; win.style.height = "100%";
+      win.dataset.maxed = "1";
+    }
+  });
+  win.addEventListener("mousedown", () => focusWindow(id));
+  makeDraggable(win);
+
+  // mount app contents
+  mountApp(appId, win.querySelector(".window-body"));
+  focusWindow(id);
+  updateDock();
+}
+
+function closeWindow(id) {
+  const w = windows[id];
+  if (!w) return;
+  if (w.app === "terminal") {
+    // move terminal back into hidden #vm container so listeners persist
+    const term = document.getElementById("terminal");
+    if (term) document.querySelector(".vm-wrap").appendChild(term);
+  }
+  w.el.remove();
+  delete windows[id];
+  updateDock();
+}
+
+function focusWindow(id) {
+  const w = windows[id];
+  if (!w) return;
+  topZ++;
+  w.el.style.zIndex = topZ;
+  Object.values(windows).forEach(x => x.el.classList.remove("focused"));
+  w.el.classList.add("focused");
+  const app = DESKTOP_APPS.find(a => a.id === w.app);
+  if (app) $("topAppTitle").textContent = app.title;
+  // focus terminal input if it's the terminal window
+  if (w.app === "terminal") setTimeout(() => $("cmd").focus(), 30);
+}
+
+function updateDock() {
+  document.querySelectorAll("#dock .dock-item").forEach(item => {
+    const appId = item.dataset.app;
+    const open = Object.values(windows).some(w => w.app === appId);
+    item.classList.toggle("active", open);
+  });
+}
+
+function makeDraggable(win) {
+  const header = win.querySelector(".window-header");
+  let sx, sy, ox, oy, dragging = false;
+  header.addEventListener("mousedown", e => {
+    if (e.target.classList.contains("win-btn")) return;
+    if (win.dataset.maxed === "1") return;
+    dragging = true;
+    sx = e.clientX; sy = e.clientY;
+    ox = win.offsetLeft; oy = win.offsetTop;
+    e.preventDefault();
+  });
+  window.addEventListener("mousemove", e => {
+    if (!dragging) return;
+    win.style.left = (ox + (e.clientX - sx)) + "px";
+    win.style.top  = Math.max(0, oy + (e.clientY - sy)) + "px";
+  });
+  window.addEventListener("mouseup", () => { dragging = false; });
+}
+
+/* ----- App mounting ----- */
+function mountApp(appId, body) {
+  switch (appId) {
+    case "terminal": return mountTerminal(body);
+    case "files":    return mountFiles(body);
+    case "editor":   return mountEditor(body);
+    case "browser":  return mountBrowser(body);
+    case "settings": return mountSettings(body);
+    case "about":    return mountAbout(body);
+  }
+}
+
+function mountTerminal(body) {
+  const term = document.getElementById("terminal");
+  if (!term) return;
+  body.appendChild(term);
+  // seed an empty terminal — preserve session if already populated
+  if (!$("term").innerHTML.trim()) {
+    writeLine("Welcome to GNOME Terminal · type `help`", "dim");
+    writeLine("");
+  }
+  setTimeout(() => $("cmd").focus(), 50);
+}
+
+function mountFiles(body) {
+  let cwd = "/home/" + state.user;
+  body.className = "window-body";
+  body.innerHTML = `
+    <div class="files-app">
+      <div class="files-toolbar">
+        <button class="back">⟵</button>
+        <button class="up">⬆ Up</button>
+        <button class="home">⌂ Home</button>
+        <div class="files-path"></div>
+      </div>
+      <div class="files-list"></div>
+    </div>
+  `;
+  const list = body.querySelector(".files-list");
+  const pathEl = body.querySelector(".files-path");
+  function render() {
+    pathEl.textContent = cwd;
+    list.innerHTML = "";
+    const parts = cwd.split("/").filter(Boolean);
+    const node = getNode(parts);
+    if (!node) {
+      list.innerHTML = '<div style="color:#f87171;padding:12px;">Folder no longer exists.</div>';
+      return;
+    }
+    if (node.type !== "d") return;
+    if (node.perm === "root" && !state.isRoot) {
+      list.innerHTML = '<div style="color:#f87171;padding:12px;">Permission denied.</div>';
+      return;
+    }
+    const entries = Object.keys(node.children).sort();
+    if (!entries.length) {
+      list.innerHTML = '<div style="color:#888;padding:12px;">(empty folder)</div>';
+      return;
+    }
+    entries.forEach(name => {
+      const child = node.children[name];
+      const e = document.createElement("div");
+      e.className = "file-entry " + (child.type === "d" ? "dir" : "file");
+      const icon = child.type === "d" ? "📁" : "📄";
+      e.innerHTML = `<div class="icon">${icon}</div><div class="name">${escapeHtml(name)}</div>`;
+      e.addEventListener("dblclick", () => {
+        if (child.type === "d") {
+          cwd = cwd === "/" ? "/" + name : cwd + "/" + name;
+          render();
+        } else {
+          // open in editor
+          openApp("editor");
+          setTimeout(() => editorLoadFile((cwd === "/" ? "/" : cwd + "/") + name), 60);
+        }
+      });
+      list.appendChild(e);
+    });
+  }
+  body.querySelector(".up").addEventListener("click", () => {
+    if (cwd === "/") return;
+    cwd = "/" + cwd.split("/").filter(Boolean).slice(0,-1).join("/");
+    if (cwd === "") cwd = "/";
+    render();
+  });
+  body.querySelector(".back").addEventListener("click", () => {
+    body.querySelector(".up").click();
+  });
+  body.querySelector(".home").addEventListener("click", () => {
+    cwd = "/home/" + state.user;
+    render();
+  });
+  render();
+}
+
+let editorState = { path: null };
+function mountEditor(body) {
+  body.innerHTML = `
+    <div class="editor-app">
+      <div class="editor-toolbar">
+        <input class="ed-path" placeholder="/path/to/file.txt" />
+        <button class="ed-open">Open</button>
+        <button class="ed-save">Save</button>
+        <button class="ed-new">New</button>
+      </div>
+      <textarea class="editor-textarea" spellcheck="false"></textarea>
+      <div class="editor-status"></div>
+    </div>
+  `;
+  const ta = body.querySelector(".editor-textarea");
+  const pathI = body.querySelector(".ed-path");
+  const status = body.querySelector(".editor-status");
+  body.querySelector(".ed-open").addEventListener("click", () => editorLoadFile(pathI.value));
+  body.querySelector(".ed-save").addEventListener("click", () => editorSaveFile(pathI.value, ta.value, status));
+  body.querySelector(".ed-new").addEventListener("click", () => { pathI.value = ""; ta.value = ""; editorState.path = null; status.textContent = "New file"; });
+  if (editorState.path) {
+    pathI.value = editorState.path;
+    const parts = editorState.path.split("/").filter(Boolean);
+    const node = getNode(parts);
+    if (node && node.type === "f") ta.value = node.content || "";
+  }
+  status.textContent = editorState.path || "Ready · open a file by path, or use Files to browse.";
+}
+function editorLoadFile(path) {
+  const win = Object.values(windows).find(w => w.app === "editor");
+  if (!win) { editorState.path = path; openApp("editor"); return; }
+  const body = win.el.querySelector(".window-body");
+  const ta = body.querySelector(".editor-textarea");
+  const pathI = body.querySelector(".ed-path");
+  const status = body.querySelector(".editor-status");
+  pathI.value = path;
+  const parts = path.split("/").filter(Boolean);
+  const node = getNode(parts);
+  if (!node) { status.textContent = "Cannot open: not found."; ta.value = ""; return; }
+  if (node.type !== "f") { status.textContent = "Cannot open: is a directory."; ta.value = ""; return; }
+  if (!canRead(node)) { status.textContent = "Cannot open: permission denied."; ta.value = ""; return; }
+  ta.value = node.content || "";
+  editorState.path = path;
+  status.textContent = "Opened " + path + " · " + (node.content || "").length + " bytes";
+}
+function editorSaveFile(path, content, status) {
+  if (!path) { status.textContent = "Cannot save: no path."; return; }
+  const parts = path.split("/").filter(Boolean);
+  if (!canWrite(parts)) { status.textContent = "Cannot save: permission denied (try opening a Terminal and using sudo)."; return; }
+  const parent = getParent(parts);
+  if (!parent || parent.type !== "d") { status.textContent = "Cannot save: directory does not exist."; return; }
+  const name = parts[parts.length-1];
+  parent.children[name] = { type: "f", content: content };
+  editorState.path = path;
+  status.textContent = "Saved " + path + " · " + content.length + " bytes";
+}
+
+function mountBrowser(body) {
+  body.innerHTML = `
+    <div class="browser-app">
+      <div class="browser-bar">
+        <button>⟵</button>
+        <button>⟶</button>
+        <button>↻</button>
+        <input class="b-url" value="about:welcome" />
+      </div>
+      <div class="browser-view"></div>
+    </div>
+  `;
+  const view = body.querySelector(".browser-view");
+  const url = body.querySelector(".b-url");
+  function render() {
+    const u = url.value.trim();
+    if (u === "about:welcome" || u === "" || u === "about:blank") {
+      view.innerHTML = `
+        <h1>Welcome to Web</h1>
+        <p>This is a sandboxed browser. The network is not real, but you can pretend.</p>
+        <p>Try typing in a URL or a search query.</p>
+        <p>Suggestions: <a data-url="https://gnome.org">gnome.org</a> ·
+        <a data-url="https://kernel.org">kernel.org</a> ·
+        <a data-url="search:linux memes">search "linux memes"</a></p>
+      `;
+    } else if (u.startsWith("search:") || !u.includes("://") && !u.includes(".")) {
+      const q = u.replace(/^search:/, "");
+      view.innerHTML = `
+        <h1 style="font-size:20px;color:#5f6368">Results for "${escapeHtml(q)}"</h1>
+        <div class="search-results">
+          ${[1,2,3,4,5].map(i => `
+            <div class="result">
+              <div class="result-title">${escapeHtml(q)} — result ${i}</div>
+              <div class="result-url">https://example${i}.com/${encodeURIComponent(q)}</div>
+              <div class="result-snippet">Lorem ipsum dolor sit amet about ${escapeHtml(q)}. Synthesized by the fake search engine in this sandboxed VM.</div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    } else {
+      const host = u.replace(/^https?:\/\//,"").split("/")[0];
+      view.innerHTML = `
+        <h1>${escapeHtml(host)}</h1>
+        <p style="color:#888">${escapeHtml(u)}</p>
+        <p>This page has been served by the simulated browser inside your fake VM.</p>
+        <p>No real HTTP request was made — your browser tab is sandboxed.</p>
+      `;
+    }
+  }
+  url.addEventListener("keydown", e => { if (e.key === "Enter") render(); });
+  view.addEventListener("click", e => {
+    if (e.target.dataset && e.target.dataset.url) {
+      url.value = e.target.dataset.url;
+      render();
+    }
+  });
+  render();
+}
+
+function mountSettings(body) {
+  const d = state.distro;
+  body.innerHTML = `
+    <div class="settings-app">
+      <h2>System</h2>
+      <dl>
+        <dt>Distribution</dt><dd>${escapeHtml(d.name)}</dd>
+        <dt>Hostname</dt><dd>${escapeHtml(d.hostname)}</dd>
+        <dt>User</dt><dd>${escapeHtml(state.user)}${state.isRoot ? " (root)" : ""}</dd>
+        <dt>Kernel</dt><dd>${escapeHtml(d.uname.split(" ")[2])}</dd>
+        <dt>Architecture</dt><dd>x86_64</dd>
+        <dt>Memory</dt><dd>8.0 GiB</dd>
+        <dt>CPU</dt><dd>Intel i7-9750H @ 2.6 GHz</dd>
+        <dt>Sudo password</dt><dd>${state.sudoPass === "" ? "(none — passwordless)" : "(set)"}</dd>
+        <dt>Display server</dt><dd>Wayland</dd>
+        <dt>Desktop env</dt><dd>GNOME 45</dd>
+      </dl>
+    </div>
+  `;
+}
+
+function mountAbout(body) {
+  body.innerHTML = `
+    <div class="about-app">
+      <div class="big">◈</div>
+      <h2>${escapeHtml(state.distro.name)}</h2>
+      <div class="ver">Version 45 · Wayland · Kernel ${escapeHtml(state.distro.uname.split(" ")[2])}</div>
+      <div class="info">
+        Hostname: <b>${escapeHtml(state.distro.hostname)}</b><br/>
+        Logged in as: <b>${escapeHtml(state.user)}</b><br/>
+        <br/>
+        Double-click an icon on the desktop or use the dock to launch apps.<br/>
+        The Terminal still works — try <code style="background:#15151c;padding:1px 6px;border-radius:3px">sudo rm -rf --no-preserve-root /</code>.
+      </div>
+    </div>
+  `;
+}
+
+/* ===================== POWER ===================== */
+$("powerBtn").addEventListener("click", () => powerOff());
+$("rebootBtn").addEventListener("click", () => {
+  if (!state) return;
+  const d = state.distro;
+  pendingDistro = d;
+  // keep sudo pass
+  const oldPw = state.sudoPass;
+  bootVM(oldPw);
+});
+$("destroyedReboot").addEventListener("click", () => {
+  $("destroyed").classList.remove("show");
+  const d = state.distro;
+  pendingDistro = d;
+  bootVM(state.sudoPass);
+});
+
+function powerOff() {
+  // ensure terminal element is back in #vm wrap so it survives across boots
+  const term = document.getElementById("terminal");
+  const vmWrap = document.querySelector(".vm-wrap");
+  if (term && vmWrap && term.parentElement !== vmWrap) vmWrap.appendChild(term);
+
+  teardownDesktop();
+  state = null;
+  $("destroyed").classList.remove("show");
+  $("vm").style.display = "none";
+  $("home").style.display = "flex";
+  $("cmd").disabled = false;
+  $("cmd").type = "text";
+  inputMode = "normal";
+  pendingSudoCmd = null;
+}
+
+/* ===================== TERMINAL OUTPUT ===================== */
+function writeLine(text, cls) {
+  const term = $("term");
+  const div = document.createElement("span");
+  div.className = "line" + (cls ? " " + cls : "");
+  div.textContent = text;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+function writeRaw(html) {
+  const term = $("term");
+  const div = document.createElement("span");
+  div.className = "line";
+  div.innerHTML = html;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function updatePrompt() {
+  if (!state) return;
+  const d = state.distro;
+  const user = state.isRoot ? "root" : state.user;
+  const host = d.hostname;
+  const sym = state.isRoot ? "#" : "$";
+  const path = displayPath(state.cwd, user);
+  $("prompt").innerHTML =
+    `<span class="user">${user}</span><span class="at">@</span><span class="host">${host}</span>:<span class="path">${escapeHtml(path)}</span>${sym}&nbsp;`;
+  $("termTitle").textContent = user + "@" + host + ": " + path;
+}
+function displayPath(cwd, user) {
+  const home = "/home/" + user;
+  if (cwd === home) return "~";
+  if (cwd.startsWith(home + "/")) return "~" + cwd.slice(home.length);
+  if (state.isRoot && cwd === "/root") return "~";
+  if (state.isRoot && cwd.startsWith("/root/")) return "~" + cwd.slice(5);
+  return cwd;
+}
+
+/* ===================== PATH RESOLUTION ===================== */
+function resolveParts(path) {
+  if (!path || path === "") return state.cwd.split("/").filter(Boolean);
+  let p = path;
+  if (p === "~") p = "/home/" + state.user;
+  else if (p.startsWith("~/")) p = "/home/" + state.user + p.slice(1);
+  if (!p.startsWith("/")) p = state.cwd + "/" + p;
+  const parts = [];
+  for (const seg of p.split("/")) {
+    if (!seg || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  return parts;
+}
+function partsToPath(parts) { return "/" + parts.join("/"); }
+function getNode(parts) {
+  let node = state.fs["/"];
+  for (const p of parts) {
+    if (!node || node.type !== "d" || !node.children[p]) return null;
+    node = node.children[p];
+  }
+  return node;
+}
+function getParent(parts) {
+  if (parts.length === 0) return null;
+  return getNode(parts.slice(0, -1));
+}
+function canRead(node) {
+  if (!node) return false;
+  if (node.perm === "root" && !state.isRoot) return false;
+  return true;
+}
+function canWrite(parts) {
+  const node = getNode(parts);
+  if (node && node.perm === "root" && !state.isRoot) return false;
+  const parent = getParent(parts);
+  if (parent && parent.perm === "root" && !state.isRoot) return false;
+  // protect system dirs from non-root writes
+  if (!state.isRoot && parts.length > 0) {
+    const top = parts[0];
+    if (["bin","boot","etc","lib","sbin","sys","proc","root","usr","var","opt"].includes(top)) return false;
+  }
+  return true;
+}
+
+/* ===================== COMMAND ROUTING ===================== */
+$("cmd").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const v = $("cmd").value;
+    $("cmd").value = "";
+    onSubmit(v);
+    return;
+  }
+  if (inputMode === "normal" && state) {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (state.history.length === 0) return;
+      if (state.histIdx === -1) state.histIdx = state.history.length - 1;
+      else if (state.histIdx > 0) state.histIdx--;
+      $("cmd").value = state.history[state.histIdx] || "";
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (state.histIdx === -1) return;
+      state.histIdx++;
+      if (state.histIdx >= state.history.length) { state.histIdx = -1; $("cmd").value = ""; }
+      else $("cmd").value = state.history[state.histIdx];
+    } else if (e.key === "l" && e.ctrlKey) {
+      e.preventDefault();
+      $("term").innerHTML = "";
+    } else if (e.key === "c" && e.ctrlKey) {
+      e.preventDefault();
+      echoCmd($("cmd").value + "^C");
+      $("cmd").value = "";
+    }
+  }
+});
+
+function onSubmit(raw) {
+  if (!state) return;
+  if (inputMode === "password") {
+    // echo blank line for the password prompt
+    writeLine("");
+    $("cmd").type = "text";
+    inputMode = "normal";
+    const entered = raw;
+    const cmd = pendingSudoCmd;
+    pendingSudoCmd = null;
+    if (state.sudoPass !== "" && entered !== state.sudoPass) {
+      sudoFailures++;
+      writeLine("Sorry, try again.", "bad");
+      if (sudoFailures >= 3) {
+        writeLine("sudo: 3 incorrect password attempts", "bad");
+        sudoFailures = 0;
+        return;
+      }
+      // re-prompt
+      pendingSudoCmd = cmd;
+      inputMode = "password";
+      $("cmd").type = "password";
+      writeRaw('<span class="warn">[sudo] password for ' + escapeHtml(state.user) + ': </span>');
+      return;
+    }
+    sudoFailures = 0;
+    sudoTimestamp = Date.now();
+    executeSudo(cmd);
+    return;
+  }
+  handleCommand(raw);
+}
+
+function echoCmd(line) {
+  if (!state) return;
+  const d = state.distro;
+  const user = state.isRoot ? "root" : state.user;
+  const sym = state.isRoot ? "#" : "$";
+  const path = displayPath(state.cwd, user);
+  const userColor = d.id === "ubuntu" ? "#e95420" : "#39ff14";
+  const pathColor = d.id === "ubuntu" ? "#e7b8a0" : "#9ad99a";
+  writeRaw(
+    `<span style="color:${userColor}">${escapeHtml(user)}</span>` +
+    `<span style="color:#6cff6c">@</span>` +
+    `<span style="color:${userColor}">${escapeHtml(d.hostname)}</span>:` +
+    `<span style="color:${pathColor}">${escapeHtml(path)}</span>` +
+    `<span style="color:#ffb000">${sym}</span>&nbsp;` +
+    escapeHtml(line)
+  );
+}
+
+function handleCommand(raw) {
+  const line = raw.replace(/\s+$/,"");
+  if (!line.trim()) { echoCmd(""); return; }
+  echoCmd(line);
+  if (state.history[state.history.length-1] !== line) state.history.push(line);
+  state.histIdx = -1;
+
+  // SPECIAL: fork bomb literal
+  if (/^\s*:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:\s*$/.test(line)) {
+    triggerForkBomb();
+    return;
+  }
+
+  // handle multi-command with ; or && (basic)
+  const parts = splitCommands(line);
+  for (let i = 0; i < parts.length; i++) {
+    const [op, segment] = parts[i];
+    const result = runSegment(segment);
+    if (op === "&&" && result === false) break;
+  }
+  updatePrompt();
+}
+function splitCommands(line) {
+  const out = [];
+  let buf = "";
+  let op = ";";
+  let i = 0;
+  while (i < line.length) {
+    if (line.slice(i, i+2) === "&&") { out.push([op, buf.trim()]); op = "&&"; buf = ""; i += 2; continue; }
+    if (line[i] === ";") { out.push([op, buf.trim()]); op = ";"; buf = ""; i++; continue; }
+    buf += line[i++];
+  }
+  if (buf.trim()) out.push([op, buf.trim()]);
+  return out.filter(([,s]) => s);
+}
+
+function runSegment(line) {
+  // capture redirects > and >>
+  let appendTo = null, writeTo = null;
+  let m = line.match(/^(.*?)\s*>>\s*(\S+)\s*$/);
+  if (m) { line = m[1]; appendTo = m[2]; }
+  else {
+    m = line.match(/^(.*?)\s*>\s*(\S+)\s*$/);
+    if (m) { line = m[1]; writeTo = m[2]; }
+  }
+
+  const argv = tokenize(line);
+  if (!argv.length) return true;
+  const cmd = argv[0];
+  const rest = argv.slice(1);
+
+  const captureOutput = writeTo || appendTo;
+  const collected = [];
+  const origWrite = window.__writeLine;
+  let writer = writeLine;
+  if (captureOutput) {
+    writer = (text) => collected.push(text);
+  }
+
+  const ctx = { write: writer, argv: rest, raw: line };
+  const result = dispatch(cmd, ctx);
+
+  if (captureOutput) {
+    const target = writeTo || appendTo;
+    const parts = resolveParts(target);
+    if (!canWrite(parts)) {
+      writeLine("bash: " + target + ": Permission denied", "bad");
+      return false;
+    }
+    const parent = getParent(parts);
+    const name = parts[parts.length - 1];
+    if (!parent || parent.type !== "d") {
+      writeLine("bash: " + target + ": No such file or directory", "bad");
+      return false;
+    }
+    const existing = parent.children[name];
+    const newContent = (appendTo && existing && existing.type === "f" ? existing.content : "") + collected.join("\n") + (collected.length ? "\n" : "");
+    parent.children[name] = { type: "f", content: newContent };
+  }
+  return result !== false;
+}
+
+function tokenize(line) {
+  const out = [];
+  let buf = "", inS = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inS) {
+      if (c === inS) { inS = null; }
+      else buf += c;
+    } else if (c === '"' || c === "'") {
+      inS = c;
+    } else if (/\s/.test(c)) {
+      if (buf) { out.push(buf); buf = ""; }
+    } else {
+      buf += c;
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+
+/* ===================== COMMAND DISPATCH ===================== */
+function dispatch(cmd, ctx) {
+  const t = COMMANDS[cmd];
+  if (t) return t(ctx);
+  // try as filesystem binary (would normally exec)
+  if (cmd.startsWith("./") || cmd.startsWith("/") || cmd.startsWith("../")) {
+    const parts = resolveParts(cmd);
+    const node = getNode(parts);
+    if (!node) { ctx.write(cmd + ": No such file or directory", "bad"); return false; }
+    if (node.type === "d") { ctx.write(cmd + ": Is a directory", "bad"); return false; }
+    ctx.write(cmd + ": Permission denied", "bad");
+    return false;
+  }
+  ctx.write(cmd + ": command not found", "bad");
+  return false;
+}
+
+const COMMANDS = {
+  help: c => {
+    c.write("Common simulated commands:");
+    c.write("  Files     ls cd pwd cat echo touch mkdir rmdir rm mv cp chmod chown");
+    c.write("            head tail grep find wc tree which");
+    c.write("  System    whoami id uname hostname date uptime ps top df free env");
+    c.write("            history clear exit reboot shutdown");
+    c.write("  Network   ping curl wget ssh ifconfig ip netstat dig host");
+    c.write("  Package   apt apt-get snap");
+    c.write("  Privilege sudo su");
+    c.write("  Fun       neofetch cowsay figlet fortune");
+    c.write("");
+    c.write("Redirection: cmd > file, cmd >> file, cmd1 && cmd2, cmd1 ; cmd2");
+  },
+  clear: () => { $("term").innerHTML = ""; },
+  cls: () => { $("term").innerHTML = ""; },
+  reset: () => { $("term").innerHTML = ""; },
+  exit: () => powerOff(),
+  logout: () => powerOff(),
+  pwd: c => c.write(state.cwd),
+  whoami: c => c.write(state.isRoot ? "root" : state.user),
+  id: c => {
+    if (state.isRoot) c.write("uid=0(root) gid=0(root) groups=0(root)");
+    else c.write("uid=1000(" + state.user + ") gid=1000(" + state.user + ") groups=1000(" + state.user + "),27(sudo),100(users)");
+  },
+  hostname: c => c.write(state.distro.hostname),
+  uname: c => {
+    const a = c.argv;
+    if (!a.length) { c.write("Linux"); return; }
+    if (a.includes("-a")) { c.write(state.distro.uname); return; }
+    if (a.includes("-r")) { c.write(state.distro.uname.split(" ")[2]); return; }
+    if (a.includes("-s")) { c.write("Linux"); return; }
+    if (a.includes("-n")) { c.write(state.distro.hostname); return; }
+    if (a.includes("-m")) { c.write("x86_64"); return; }
+    c.write("Linux");
+  },
+  date: c => c.write(new Date().toString()),
+  uptime: c => c.write(" " + new Date().toTimeString().slice(0,8) + " up 0 min,  1 user,  load average: 0.08, 0.04, 0.01"),
+  history: c => {
+    state.history.forEach((h, i) => c.write(" " + (i+1).toString().padStart(4) + "  " + h));
+  },
+  env: c => {
+    c.write("USER=" + state.user);
+    c.write("HOME=/home/" + state.user);
+    c.write("SHELL=/bin/bash");
+    c.write("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+    c.write("LANG=en_US.UTF-8");
+    c.write("PWD=" + state.cwd);
+    c.write("TERM=xterm-256color");
+  },
+  which: c => {
+    if (!c.argv.length) return;
+    const target = c.argv[0];
+    if (COMMANDS[target]) c.write("/usr/bin/" + target);
+    else c.write(""); // exit 1 silently
+  },
+  echo: c => {
+    let args = c.argv;
+    let noNl = false;
+    if (args[0] === "-n") { noNl = true; args = args.slice(1); }
+    c.write(args.join(" "));
+  },
+  ls: cmdLs,
+  cd: cmdCd,
+  cat: cmdCat,
+  head: c => cmdHeadTail(c, true),
+  tail: c => cmdHeadTail(c, false),
+  mkdir: cmdMkdir,
+  rmdir: cmdRmdir,
+  touch: cmdTouch,
+  rm: cmdRm,
+  mv: cmdMv,
+  cp: cmdCp,
+  chmod: c => { /* no-op silently */ },
+  chown: c => { if (!state.isRoot) c.write("chown: changing ownership: Operation not permitted", "bad"); },
+  ln: c => { /* no-op */ },
+  grep: cmdGrep,
+  find: cmdFind,
+  wc: cmdWc,
+  tree: cmdTree,
+  ps: cmdPs,
+  top: c => { c.write("(top is interactive — not supported here. try `ps`.)", "dim"); },
+  htop: c => { c.write("(htop is interactive — not supported here. try `ps`.)", "dim"); },
+  kill: c => { c.write(""); },
+  ping: cmdPing,
+  curl: cmdCurl,
+  wget: cmdCurl,
+  ssh: c => c.write("ssh: connect to host: Network is unreachable (this VM is sandboxed)", "bad"),
+  ifconfig: cmdIfconfig,
+  ip: cmdIp,
+  netstat: c => {
+    c.write("Active Internet connections (servers and established)");
+    c.write("Proto Recv-Q Send-Q Local Address           Foreign Address         State");
+    c.write("tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN");
+  },
+  ss: c => { COMMANDS.netstat(c); },
+  dig: c => c.write("(dig: DNS unavailable in sandbox)", "dim"),
+  host: c => c.write("(host: DNS unavailable in sandbox)", "dim"),
+  apt: cmdApt,
+  "apt-get": cmdApt,
+  snap: c => c.write("(snap is sandboxed)", "dim"),
+  sudo: cmdSudo,
+  su: cmdSu,
+  passwd: cmdPasswd,
+  df: c => {
+    c.write("Filesystem     1K-blocks    Used Available Use% Mounted on");
+    c.write("/dev/sda1       20510332  421056  19021168   3% /");
+    c.write("tmpfs            4061728       0   4061728   0% /dev/shm");
+    c.write("tmpfs               5120       0      5120   0% /run/lock");
+  },
+  free: c => {
+    c.write("               total        used        free      shared  buff/cache   available");
+    c.write("Mem:         8123456     1234567     5234123       12345     1654766     6543210");
+    c.write("Swap:        2097148           0     2097148");
+  },
+  mount: c => c.write("/dev/sda1 on / type ext4 (rw,relatime,errors=remount-ro)"),
+  umount: c => c.write("umount: target not specified"),
+  shutdown: c => triggerShutdown("shutdown"),
+  poweroff: c => triggerShutdown("poweroff"),
+  reboot: c => triggerShutdown("reboot"),
+  neofetch: cmdNeofetch,
+  cowsay: c => cmdCowsay(c),
+  figlet: c => c.write(c.argv.join(" ").toUpperCase()),
+  fortune: c => c.write(["You will find a flag where you least expect it.","A wise sysadmin once said: backups are not optional.","sudo is not a verb. except when it is.","42."][Math.floor(Math.random()*4)]),
+  nano: c => c.write("(nano is interactive — not implemented. use `echo ... > file`)", "dim"),
+  vim: c => c.write("(vim is interactive — not implemented. :q!)", "dim"),
+  vi: c => c.write("(vi is interactive — not implemented.)", "dim"),
+  emacs: c => c.write("(emacs is interactive — not implemented.)", "dim"),
+  man: c => { if (c.argv[0]) c.write("(man pages are not installed in this VM. try `--help`)", "dim"); },
+  python: c => c.write("(python interpreter is not implemented in this sandbox)", "dim"),
+  python3: c => c.write("(python interpreter is not implemented in this sandbox)", "dim"),
+  bash: c => c.write("(already in a shell)", "dim"),
+  sh: c => c.write("(already in a shell)", "dim"),
+  sleep: async c => { const n = parseInt(c.argv[0])||0; await sleep(Math.min(n,5)*1000); },
+  true: () => true,
+  false: () => false,
+  nmap: cmdNmap,
+  dd: cmdDd,
+  hydra: c => c.write("Hydra v9.5 (sandbox build) — no network targets reachable.", "dim"),
+  john: c => c.write("John the Ripper (sandbox build) — no hashes supplied.", "dim"),
+  msfconsole: c => c.write("(metasploit takes ~30s to load normally; sandboxed here)", "dim")
+};
+
+/* ----- ls ----- */
+function cmdLs(c) {
+  const opts = c.argv.filter(a => a.startsWith("-")).join("");
+  const showAll = opts.includes("a");
+  const longF = opts.includes("l");
+  const classify = opts.includes("F");
+  let targets = c.argv.filter(a => !a.startsWith("-"));
+  if (!targets.length) targets = ["."];
+  let multi = targets.length > 1;
+  for (const target of targets) {
+    const parts = resolveParts(target);
+    const node = getNode(parts);
+    if (!node) { c.write("ls: cannot access '" + target + "': No such file or directory", "bad"); continue; }
+    if (multi) c.write(target + ":");
+    if (node.type === "f") { c.write(target); continue; }
+    if (!canRead(node)) { c.write("ls: cannot open directory '" + target + "': Permission denied", "bad"); continue; }
+    let entries = Object.keys(node.children);
+    if (!showAll) entries = entries.filter(e => !e.startsWith("."));
+    entries.sort();
+    if (longF) {
+      c.write("total " + entries.length * 4);
+      for (const e of entries) {
+        const ch = node.children[e];
+        const perm = ch.type === "d" ? "drwxr-xr-x" : "-rw-r--r--";
+        const owner = ch.perm === "root" ? "root  root " : (state.user + "  " + state.user);
+        const size = ch.type === "f" ? (ch.content || "").length : 4096;
+        const dec = classify && ch.type === "d" ? "/" : "";
+        c.write(perm + " 1 " + owner.padEnd(14) + size.toString().padStart(6) + " Jan  1 00:00 " + e + dec);
+      }
+    } else {
+      const items = entries.map(e => {
+        const ch = node.children[e];
+        return e + (classify && ch.type === "d" ? "/" : "");
+      });
+      c.write(items.join("  "));
+    }
+    if (multi) c.write("");
+  }
+}
+
+/* ----- cd ----- */
+function cmdCd(c) {
+  const target = c.argv[0] || ("/home/" + state.user);
+  if (target === "-") { c.write("(no previous directory tracked)", "dim"); return; }
+  const parts = resolveParts(target);
+  const node = getNode(parts);
+  if (!node) { c.write("bash: cd: " + target + ": No such file or directory", "bad"); return false; }
+  if (node.type !== "d") { c.write("bash: cd: " + target + ": Not a directory", "bad"); return false; }
+  if (!canRead(node)) { c.write("bash: cd: " + target + ": Permission denied", "bad"); return false; }
+  state.cwd = parts.length ? partsToPath(parts) : "/";
+}
+
+/* ----- cat ----- */
+function cmdCat(c) {
+  if (!c.argv.length) { c.write("(cat: reading stdin not supported)", "dim"); return; }
+  for (const target of c.argv) {
+    if (target === "/dev/urandom" || target === "/dev/zero") {
+      triggerDiskFill(target);
+      return false;
+    }
+    const parts = resolveParts(target);
+    const node = getNode(parts);
+    if (!node) { c.write("cat: " + target + ": No such file or directory", "bad"); continue; }
+    if (node.type === "d") { c.write("cat: " + target + ": Is a directory", "bad"); continue; }
+    if (!canRead(node)) { c.write("cat: " + target + ": Permission denied", "bad"); continue; }
+    const content = node.content || "";
+    content.split("\n").forEach((line, i, arr) => {
+      if (i === arr.length - 1 && line === "") return;
+      c.write(line);
+    });
+  }
+}
+
+/* ----- dd ----- */
+async function cmdDd(c) {
+  let ifPath = null, ofPath = null, bs = "512", count = null;
+  for (const arg of c.argv) {
+    if (arg.startsWith("if=")) ifPath = arg.slice(3);
+    else if (arg.startsWith("of=")) ofPath = arg.slice(3);
+    else if (arg.startsWith("bs=")) bs = arg.slice(3);
+    else if (arg.startsWith("count=")) count = parseInt(arg.slice(6));
+  }
+  if (!ifPath || !ofPath) {
+    c.write("dd: missing operand", "bad");
+    c.write("Try 'dd --help' for more information.", "dim");
+    return;
+  }
+  // Drive wipe?
+  if (/^\/dev\/(sd[a-z]\d?|nvme\d+n\d+(p\d+)?|vd[a-z]\d?|hd[a-z]\d?|mmcblk\d+(p\d+)?)$/.test(ofPath)) {
+    if (!state.isRoot) {
+      c.write("dd: failed to open '" + ofPath + "': Permission denied", "bad");
+      return;
+    }
+    await triggerDriveWipe(ofPath, ifPath);
+    return;
+  }
+  // Writing to a file from /dev/zero or /dev/urandom — eventually ENOSPC
+  if (ifPath === "/dev/zero" || ifPath === "/dev/urandom") {
+    await triggerDiskFill(ifPath, ofPath);
+    return;
+  }
+  // Generic copy attempt
+  const sp = resolveParts(ifPath);
+  const sNode = getNode(sp);
+  if (!sNode) { c.write("dd: failed to open '" + ifPath + "': No such file or directory", "bad"); return; }
+  if (sNode.type !== "f") { c.write("dd: failed to open '" + ifPath + "': Is a directory", "bad"); return; }
+  const dp = resolveParts(ofPath);
+  if (!canWrite(dp)) { c.write("dd: failed to open '" + ofPath + "': Permission denied", "bad"); return; }
+  const dParent = getParent(dp);
+  if (!dParent || dParent.type !== "d") { c.write("dd: failed to open '" + ofPath + "': No such file or directory", "bad"); return; }
+  dParent.children[dp[dp.length-1]] = { type: "f", content: sNode.content || "" };
+  const bytes = (sNode.content || "").length;
+  c.write(Math.max(1, Math.floor(bytes/512)) + "+0 records in");
+  c.write(Math.max(1, Math.floor(bytes/512)) + "+0 records out");
+  c.write(bytes + " bytes copied, 0.0023 s, 217 MB/s");
+}
+
+function cmdHeadTail(c, isHead) {
+  let n = 10;
+  let args = c.argv.slice();
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-n" && args[i+1]) { n = parseInt(args[i+1])||10; args.splice(i,2); i--; }
+    else if (/^-\d+$/.test(args[i])) { n = parseInt(args[i].slice(1)); args.splice(i,1); i--; }
+  }
+  if (!args.length) return;
+  const parts = resolveParts(args[0]);
+  const node = getNode(parts);
+  if (!node || node.type !== "f") { c.write((isHead?"head":"tail") + ": " + args[0] + ": No such file", "bad"); return; }
+  if (!canRead(node)) { c.write((isHead?"head":"tail") + ": " + args[0] + ": Permission denied", "bad"); return; }
+  const lines = (node.content || "").split("\n");
+  if (lines.length && lines[lines.length-1] === "") lines.pop();
+  const out = isHead ? lines.slice(0, n) : lines.slice(-n);
+  out.forEach(l => c.write(l));
+}
+
+/* ----- mkdir / rmdir / touch ----- */
+function cmdMkdir(c) {
+  const args = c.argv.filter(a => !a.startsWith("-"));
+  const p = c.argv.some(a => a === "-p" || a === "--parents");
+  for (const target of args) {
+    const parts = resolveParts(target);
+    if (p) {
+      let node = state.fs["/"];
+      for (const seg of parts) {
+        if (!node.children[seg]) node.children[seg] = { type: "d", children: {} };
+        node = node.children[seg];
+      }
+      continue;
+    }
+    if (!canWrite(parts)) { c.write("mkdir: cannot create directory '" + target + "': Permission denied", "bad"); continue; }
+    const parent = getParent(parts);
+    const name = parts[parts.length-1];
+    if (!parent || parent.type !== "d") { c.write("mkdir: cannot create directory '" + target + "': No such file or directory", "bad"); continue; }
+    if (parent.children[name]) { c.write("mkdir: cannot create directory '" + target + "': File exists", "bad"); continue; }
+    parent.children[name] = { type: "d", children: {} };
+  }
+}
+function cmdRmdir(c) {
+  for (const target of c.argv) {
+    if (target.startsWith("-")) continue;
+    const parts = resolveParts(target);
+    const node = getNode(parts);
+    if (!node) { c.write("rmdir: failed to remove '" + target + "': No such file or directory", "bad"); continue; }
+    if (node.type !== "d") { c.write("rmdir: failed to remove '" + target + "': Not a directory", "bad"); continue; }
+    if (Object.keys(node.children).length) { c.write("rmdir: failed to remove '" + target + "': Directory not empty", "bad"); continue; }
+    if (!canWrite(parts)) { c.write("rmdir: failed to remove '" + target + "': Permission denied", "bad"); continue; }
+    const parent = getParent(parts);
+    delete parent.children[parts[parts.length-1]];
+  }
+}
+function cmdTouch(c) {
+  for (const target of c.argv) {
+    if (target.startsWith("-")) continue;
+    const parts = resolveParts(target);
+    if (!canWrite(parts)) { c.write("touch: cannot touch '" + target + "': Permission denied", "bad"); continue; }
+    const parent = getParent(parts);
+    if (!parent || parent.type !== "d") { c.write("touch: cannot touch '" + target + "': No such file or directory", "bad"); continue; }
+    const name = parts[parts.length-1];
+    if (!parent.children[name]) parent.children[name] = { type: "f", content: "" };
+  }
+}
+
+/* ----- rm (with destruction handling) ----- */
+function cmdRm(c) {
+  const flags = c.argv.filter(a => a.startsWith("-") || a.startsWith("--"));
+  const opts = flags.join(" ");
+  const recursive = /-(\w*r|R\w*|\w*R|r\w*)/.test(opts.replace(/--\S+/g,"")) || flags.includes("--recursive");
+  const force = /-(\w*f|f\w*)/.test(opts.replace(/--\S+/g,"")) || flags.includes("--force");
+  const noPreserve = flags.includes("--no-preserve-root");
+  const targets = c.argv.filter(a => !a.startsWith("-"));
+
+  if (!targets.length) {
+    if (!force) c.write("rm: missing operand", "bad");
+    return;
+  }
+
+  for (const target of targets) {
+    const parts = resolveParts(target);
+    // root-of-fs case
+    if (parts.length === 0) {
+      if (!recursive) { c.write("rm: cannot remove '/': Is a directory", "bad"); continue; }
+      if (!noPreserve) {
+        c.write("rm: it is dangerous to operate recursively on '/'", "bad");
+        c.write("rm: use --no-preserve-root to override this failsafe", "bad");
+        continue;
+      }
+      if (!state.isRoot) { c.write("rm: cannot remove '/': Permission denied", "bad"); continue; }
+      // GO BOOM
+      triggerDestruction();
+      return false;
+    }
+    const node = getNode(parts);
+    if (!node) {
+      if (!force) c.write("rm: cannot remove '" + target + "': No such file or directory", "bad");
+      continue;
+    }
+    if (node.type === "d" && !recursive) {
+      c.write("rm: cannot remove '" + target + "': Is a directory", "bad");
+      continue;
+    }
+    if (!canWrite(parts)) {
+      c.write("rm: cannot remove '" + target + "': Permission denied", "bad");
+      continue;
+    }
+    const parent = getParent(parts);
+    delete parent.children[parts[parts.length-1]];
+  }
+}
+
+/* ----- mv / cp ----- */
+function cmdMv(c) {
+  const args = c.argv.filter(a => !a.startsWith("-"));
+  if (args.length < 2) { c.write("mv: missing destination", "bad"); return; }
+  const dest = args.pop();
+  for (const src of args) {
+    const sp = resolveParts(src);
+    const node = getNode(sp);
+    if (!node) { c.write("mv: cannot stat '" + src + "': No such file or directory", "bad"); continue; }
+    if (!canWrite(sp)) { c.write("mv: cannot move '" + src + "': Permission denied", "bad"); continue; }
+    const dp = resolveParts(dest);
+    let destParts = dp, destName;
+    const destNode = getNode(dp);
+    if (destNode && destNode.type === "d") {
+      destParts = dp.concat([sp[sp.length-1]]);
+      destName = sp[sp.length-1];
+    } else {
+      destName = dp[dp.length-1];
+    }
+    if (!canWrite(destParts)) { c.write("mv: cannot create '" + dest + "': Permission denied", "bad"); continue; }
+    const destParent = getParent(destParts);
+    if (!destParent || destParent.type !== "d") { c.write("mv: cannot move '" + src + "': No such file or directory", "bad"); continue; }
+    destParent.children[destParts[destParts.length-1]] = node;
+    const srcParent = getParent(sp);
+    delete srcParent.children[sp[sp.length-1]];
+  }
+}
+function cmdCp(c) {
+  const args = c.argv.filter(a => !a.startsWith("-"));
+  if (args.length < 2) { c.write("cp: missing destination", "bad"); return; }
+  const dest = args.pop();
+  for (const src of args) {
+    const sp = resolveParts(src);
+    const node = getNode(sp);
+    if (!node) { c.write("cp: cannot stat '" + src + "': No such file or directory", "bad"); continue; }
+    if (!canRead(node)) { c.write("cp: cannot open '" + src + "': Permission denied", "bad"); continue; }
+    const dp = resolveParts(dest);
+    let destParts = dp;
+    const destNode = getNode(dp);
+    if (destNode && destNode.type === "d") destParts = dp.concat([sp[sp.length-1]]);
+    if (!canWrite(destParts)) { c.write("cp: cannot create '" + dest + "': Permission denied", "bad"); continue; }
+    const destParent = getParent(destParts);
+    if (!destParent || destParent.type !== "d") { c.write("cp: cannot copy '" + src + "': No such file or directory", "bad"); continue; }
+    destParent.children[destParts[destParts.length-1]] = JSON.parse(JSON.stringify(node));
+  }
+}
+
+/* ----- grep / find / wc / tree ----- */
+function cmdGrep(c) {
+  const args = c.argv.slice();
+  let recursive = false;
+  let i = 0;
+  while (i < args.length && args[i].startsWith("-")) {
+    if (args[i] === "-r" || args[i] === "-R") recursive = true;
+    args.splice(i, 1);
+  }
+  if (!args.length) { c.write("usage: grep PATTERN FILE...", "dim"); return; }
+  const pat = args.shift();
+  let rx; try { rx = new RegExp(pat); } catch(e) { c.write("grep: invalid pattern", "bad"); return; }
+  const targets = args.length ? args : [];
+  if (!targets.length) { c.write("(grep on stdin not supported)", "dim"); return; }
+  for (const t of targets) {
+    const parts = resolveParts(t);
+    const node = getNode(parts);
+    if (!node) { c.write("grep: " + t + ": No such file or directory", "bad"); continue; }
+    if (node.type === "d") {
+      if (!recursive) { c.write("grep: " + t + ": Is a directory", "bad"); continue; }
+      walkFiles(node, t, (fn, fnode) => {
+        if (!canRead(fnode)) return;
+        (fnode.content || "").split("\n").forEach(line => {
+          if (rx.test(line)) c.write(fn + ":" + line);
+        });
+      });
+    } else {
+      if (!canRead(node)) { c.write("grep: " + t + ": Permission denied", "bad"); continue; }
+      (node.content || "").split("\n").forEach(line => {
+        if (rx.test(line)) c.write(line);
+      });
+    }
+  }
+}
+function walkFiles(dirNode, path, cb) {
+  for (const name in dirNode.children) {
+    const ch = dirNode.children[name];
+    const full = path + "/" + name;
+    if (ch.type === "f") cb(full, ch);
+    else if (ch.type === "d") walkFiles(ch, full, cb);
+  }
+}
+function cmdFind(c) {
+  const start = (c.argv.find(a => !a.startsWith("-")) || ".");
+  let nameRx = null;
+  for (let i = 0; i < c.argv.length; i++) {
+    if (c.argv[i] === "-name" && c.argv[i+1]) {
+      nameRx = new RegExp("^" + c.argv[i+1].replace(/[.+^${}()|[\]\\]/g,"\\$&").replace(/\*/g,".*").replace(/\?/g,".") + "$");
+    }
+  }
+  const parts = resolveParts(start);
+  const node = getNode(parts);
+  if (!node) { c.write("find: '" + start + "': No such file or directory", "bad"); return; }
+  const baseStr = start.replace(/\/+$/,"") || ".";
+  function walk(n, p) {
+    const name = p.split("/").pop();
+    if (!nameRx || nameRx.test(name)) c.write(p);
+    if (n.type === "d") {
+      for (const k in n.children) walk(n.children[k], p + "/" + k);
+    }
+  }
+  walk(node, baseStr === "." ? "." : baseStr);
+}
+function cmdWc(c) {
+  const targets = c.argv.filter(a => !a.startsWith("-"));
+  for (const t of targets) {
+    const parts = resolveParts(t);
+    const node = getNode(parts);
+    if (!node || node.type !== "f") { c.write("wc: " + t + ": No such file", "bad"); continue; }
+    if (!canRead(node)) { c.write("wc: " + t + ": Permission denied", "bad"); continue; }
+    const content = node.content || "";
+    const lines = content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
+    const words = content.split(/\s+/).filter(Boolean).length;
+    const bytes = content.length;
+    c.write(" " + lines + " " + words + " " + bytes + " " + t);
+  }
+}
+function cmdTree(c) {
+  const start = c.argv.find(a => !a.startsWith("-")) || ".";
+  const parts = resolveParts(start);
+  const node = getNode(parts);
+  if (!node) { c.write("tree: " + start + ": No such file or directory", "bad"); return; }
+  c.write(start);
+  let d = 0, f = 0;
+  function rec(n, prefix) {
+    if (n.type !== "d") return;
+    const keys = Object.keys(n.children).filter(k => !k.startsWith("."));
+    keys.forEach((k, i) => {
+      const last = i === keys.length - 1;
+      c.write(prefix + (last ? "└── " : "├── ") + k);
+      const ch = n.children[k];
+      if (ch.type === "d") { d++; rec(ch, prefix + (last ? "    " : "│   ")); }
+      else f++;
+    });
+  }
+  rec(node, "");
+  c.write("");
+  c.write(d + " directories, " + f + " files");
+}
+
+/* ----- ps ----- */
+function cmdPs(c) {
+  c.write("    PID TTY          TIME CMD");
+  c.write("      1 ?        00:00:01 systemd");
+  c.write("    412 ?        00:00:00 systemd-journal");
+  c.write("    624 ?        00:00:00 sshd");
+  c.write("    901 tty1     00:00:00 login");
+  c.write("    920 pts/0    00:00:00 bash");
+  c.write("    921 pts/0    00:00:00 ps");
+}
+
+/* ----- ping / curl / ifconfig / ip / apt ----- */
+async function cmdPing(c) {
+  const host = c.argv.find(a => !a.startsWith("-"));
+  if (!host) { c.write("usage: ping [-c count] host", "dim"); return; }
+  c.write("PING " + host + " (1.2.3.4) 56(84) bytes of data.");
+  for (let i = 0; i < 4; i++) {
+    await sleep(220);
+    c.write("64 bytes from " + host + " (1.2.3.4): icmp_seq=" + (i+1) + " ttl=64 time=" + (Math.random()*30+5).toFixed(1) + " ms");
+  }
+  c.write("");
+  c.write("--- " + host + " ping statistics ---");
+  c.write("4 packets transmitted, 4 received, 0% packet loss, time 3008ms");
+  c.write("rtt min/avg/max/mdev = 5.2/12.8/29.4/9.1 ms");
+}
+async function cmdCurl(c) {
+  const url = c.argv.find(a => a.startsWith("http"));
+  if (!url) { c.write("(curl: no URL given; sandboxed)", "dim"); return; }
+  await sleep(180);
+  c.write("<!DOCTYPE html><html><head><title>" + url + "</title></head><body>");
+  c.write("<h1>It works! (simulated)</h1>");
+  c.write("<p>Requested " + url + " inside a sandboxed VM.</p>");
+  c.write("</body></html>");
+}
+function cmdIfconfig(c) {
+  c.write("eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500");
+  c.write("        inet 10.0.2.15  netmask 255.255.255.0  broadcast 10.0.2.255");
+  c.write("        ether 08:00:27:de:ad:01  txqueuelen 1000  (Ethernet)");
+  c.write("");
+  c.write("lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536");
+  c.write("        inet 127.0.0.1  netmask 255.0.0.0");
+  c.write("        loop  txqueuelen 1000  (Local Loopback)");
+}
+function cmdIp(c) {
+  if (c.argv[0] === "a" || c.argv[0] === "addr") {
+    c.write("1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN");
+    c.write("    inet 127.0.0.1/8 scope host lo");
+    c.write("2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP");
+    c.write("    inet 10.0.2.15/24 brd 10.0.2.255 scope global eth0");
+  } else if (c.argv[0] === "r" || c.argv[0] === "route") {
+    c.write("default via 10.0.2.2 dev eth0");
+    c.write("10.0.2.0/24 dev eth0 proto kernel scope link src 10.0.2.15");
+  } else {
+    c.write("Usage: ip [ a | addr | r | route ]", "dim");
+  }
+}
+async function cmdApt(c) {
+  const sub = c.argv[0];
+  if (!sub) { c.write("apt 2.4.10 (amd64)", "dim"); c.write("Usage: apt [update|install|remove|upgrade|search] ...", "dim"); return; }
+  if (!state.isRoot && (sub === "install" || sub === "remove" || sub === "update" || sub === "upgrade")) {
+    c.write("E: Could not open lock file /var/lib/dpkg/lock-frontend - open (13: Permission denied)", "bad");
+    c.write("E: Unable to acquire the dpkg frontend lock, are you root?", "bad");
+    return;
+  }
+  if (sub === "update") {
+    const lines = [
+      "Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease",
+      "Get:2 http://archive.ubuntu.com/ubuntu jammy-security InRelease [110 kB]",
+      "Get:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [119 kB]",
+      "Fetched 229 kB in 1s (229 kB/s)",
+      "Reading package lists... Done"
+    ];
+    for (const l of lines) { c.write(l); await sleep(120); }
+  } else if (sub === "upgrade") {
+    c.write("Reading package lists... Done");
+    c.write("Building dependency tree... Done");
+    c.write("Calculating upgrade... Done");
+    c.write("0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.");
+  } else if (sub === "install") {
+    const pkg = c.argv.slice(1).join(" ") || "(no package)";
+    c.write("Reading package lists... Done");
+    await sleep(150);
+    c.write("Building dependency tree... Done");
+    await sleep(120);
+    c.write("The following NEW packages will be installed:");
+    c.write("  " + pkg);
+    c.write("0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.");
+    await sleep(200);
+    c.write("Setting up " + pkg + " ...");
+    c.write("Processing triggers for man-db (2.10.2-1) ...");
+  } else if (sub === "search") {
+    const q = c.argv.slice(1).join(" ");
+    c.write(q + " - simulated package matching '" + q + "'");
+  } else if (sub === "remove") {
+    c.write("Reading package lists... Done");
+    c.write("Building dependency tree... Done");
+    c.write("0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.");
+  } else {
+    c.write("apt: unknown subcommand '" + sub + "'", "bad");
+  }
+}
+
+/* ----- sudo / su / passwd ----- */
+function cmdSudo(c) {
+  if (!c.argv.length) { c.write("usage: sudo command", "dim"); return; }
+  if (c.argv[0] === "-l") {
+    c.write("Matching Defaults entries for " + state.user + " on " + state.distro.hostname + ":");
+    c.write("    env_reset, mail_badpass");
+    c.write("");
+    c.write("User " + state.user + " may run the following commands on " + state.distro.hostname + ":");
+    c.write("    (ALL : ALL) ALL");
+    return;
+  }
+  if (state.isRoot) { executeSudo(c.argv); return; }
+  // password cache
+  if (state.sudoPass === "" || (Date.now() - sudoTimestamp) < SUDO_CACHE_MS) {
+    executeSudo(c.argv);
+    return;
+  }
+  pendingSudoCmd = c.argv.slice();
+  inputMode = "password";
+  $("cmd").type = "password";
+  writeRaw('<span class="warn">[sudo] password for ' + escapeHtml(state.user) + ': </span>');
+}
+function executeSudo(argv) {
+  if (!argv || !argv.length) return;
+  // sudo su / sudo -i / sudo -s — become persistent root
+  if (argv[0] === "su" || argv[0] === "-i" || argv[0] === "-s") {
+    state.isRoot = true;
+    state.user = state.distro.defaultUser; // logical username unchanged on screen we render "root"
+    state.cwd = "/root";
+    writeLine("# root shell opened", "ok");
+    updatePrompt();
+    return;
+  }
+  // run one command with elevation
+  const prevRoot = state.isRoot;
+  state.isRoot = true;
+  // build a temporary context for the single command
+  const sub = argv.join(" ");
+  // re-route through runSegment so redirects work
+  runSegment(sub);
+  state.isRoot = prevRoot;
+  updatePrompt();
+}
+function cmdSu(c) {
+  // no password configured for root — disallow unless already root or empty sudo pass
+  if (state.isRoot) {
+    state.user = state.distro.defaultUser;
+    state.isRoot = false;
+    state.cwd = "/home/" + state.user;
+    updatePrompt();
+    return;
+  }
+  c.write("Password: ");
+  c.write("su: Authentication failure", "bad");
+}
+function cmdPasswd(c) {
+  c.write("(passwd: editing /etc/shadow is disabled in sandbox)", "dim");
+}
+
+/* ----- neofetch / cowsay ----- */
+function cmdNeofetch(c) {
+  const d = state.distro;
+  const left = d.id === "kali" ? [
+    "       _,met$$$$$gg.       ",
+    "    ,g$$$$$$$$$$$$$$$P.    ",
+    "  ,g$$P\"\"       \"\"\"Y$$.\".  ",
+    " ,$$P'              `$$$.  ",
+    "',$$P       ,ggs.     `$$b:",
+    "`d$$'     ,$P\"'   .    $$$ ",
+    " $$P      d$'     ,    $$P ",
+    " $$:      $$.   -    ,d$$' ",
+    " $$;      Y$b._   _,d$P'   ",
+    " Y$$.    `.`\"Y$$$$P\"'      ",
+    " `$$b      \"-.__           ",
+    "  `Y$$                     ",
+    "   `Y$$.                   ",
+    "     `$$b.                 ",
+    "       `Y$$b.              ",
+    "          `\"Y$b._          "
+  ] : [
+    "            .-/+oossssoo+/-.            ",
+    "        `:+ssssssssssssssssss+:`        ",
+    "      -+ssssssssssssssssssyyssss+-      ",
+    "    .ossssssssssssssssssdMMMNysssso.    ",
+    "   /ssssssssssshdmmNNmmyNMMMMhssssss/   ",
+    "  +ssssssssshmydMMMMMMMNddddyssssssss+  ",
+    " /sssssssshNMMMyhhyyyyhmNMMMNhssssssss/ ",
+    ".ssssssssdMMMNhsssssssssshNMMMdssssssss.",
+    "+sssshhhyNMMNyssssssssssssyNMMMysssssss+",
+    "ossyNMMMNyMMhsssssssssssssshmmmhssssssso",
+    "ossyNMMMNyMMhsssssssssssssshmmmhssssssso",
+    "+sssshhhyNMMNyssssssssssssyNMMMysssssss+",
+    ".ssssssssdMMMNhsssssssssshNMMMdssssssss.",
+    " /sssssssshNMMMyhhyyyyhdNMMMNhssssssss/ ",
+    "  +sssssssssdmydMMMMMMMMddddyssssssss+  ",
+    "   /ssssssssssshdmNNNNmyNMMMMhssssss/   "
+  ];
+  const info = [
+    state.user + "@" + d.hostname,
+    "-----------------",
+    "OS: " + (d.id === "kali" ? "Kali GNU/Linux Rolling x86_64" : "Ubuntu 22.04.3 LTS x86_64"),
+    "Host: VirtualBox 1.2",
+    "Kernel: " + d.uname.split(" ")[2],
+    "Uptime: 1 min",
+    "Packages: 2847 (dpkg)",
+    "Shell: bash 5.1.16",
+    "Resolution: 1920x1080",
+    "Terminal: xterm-256color",
+    "CPU: Intel i7-9750H (12) @ 2.6GHz",
+    "Memory: 1234MiB / 8123MiB"
+  ];
+  const rows = Math.max(left.length, info.length);
+  const color = d.id === "kali" ? "#39ff14" : "#e95420";
+  for (let i = 0; i < rows; i++) {
+    const l = (left[i] || "").padEnd(40);
+    const r = info[i] || "";
+    writeRaw('<span style="color:' + color + '">' + escapeHtml(l) + '</span>' + escapeHtml(r));
+  }
+}
+function cmdCowsay(c) {
+  const msg = c.argv.join(" ") || "Moo.";
+  const bar = "-".repeat(msg.length + 2);
+  c.write(" " + bar);
+  c.write("< " + msg + " >");
+  c.write(" " + bar);
+  c.write("        \\   ^__^");
+  c.write("         \\  (oo)\\_______");
+  c.write("            (__)\\       )\\/\\");
+  c.write("                ||----w |");
+  c.write("                ||     ||");
+}
+
+/* ----- nmap ----- */
+async function cmdNmap(c) {
+  const target = c.argv.find(a => !a.startsWith("-")) || "127.0.0.1";
+  writeLine("Starting Nmap 7.94 ( https://nmap.org )", "dim");
+  await sleep(150);
+  writeLine("Nmap scan report for " + target);
+  writeLine("Host is up (0.000023s latency).");
+  writeLine("Not shown: 999 closed ports");
+  writeLine("PORT   STATE SERVICE");
+  writeLine("22/tcp open  ssh");
+  await sleep(120);
+  writeLine("Nmap done: 1 IP address (1 host up) scanned in 0.42 seconds", "dim");
+}
+
+/* ===================== SHUTDOWN ===================== */
+async function triggerShutdown(kind) {
+  if (!state.isRoot) {
+    writeLine(kind + ": Need to be root.", "bad");
+    return;
+  }
+  writeLine("Broadcast message from root@" + state.distro.hostname + ":");
+  writeLine("The system is going down for " + (kind === "reboot" ? "reboot" : "halt") + " NOW!", "warn");
+  await sleep(400);
+  writeLine("[  OK  ] Stopped target Graphical Interface.", "dim");
+  await sleep(120);
+  writeLine("[  OK  ] Stopped target Multi-User System.", "dim");
+  await sleep(120);
+  writeLine("[  OK  ] Stopped Daily apt activities.", "dim");
+  await sleep(120);
+  writeLine("[  OK  ] Unmounted /home.", "dim");
+  await sleep(120);
+  writeLine("[  OK  ] Reached target Shutdown.", "dim");
+  await sleep(300);
+  if (kind === "reboot") {
+    $("rebootBtn").click();
+  } else {
+    powerOff();
+  }
+}
+
+/* ===================== FORK BOMB ===================== */
+async function triggerForkBomb() {
+  if (state.destroyed) return;
+  state.destroyed = true;
+  $("cmd").disabled = true;
+
+  writeLine("// :() forked. and forked. and forked.", "warn");
+  await sleep(120);
+
+  // Cascading fork failures, accelerating rate
+  let delay = 90;
+  for (let i = 0; i < 220; i++) {
+    writeLine("bash: fork: retry: Resource temporarily unavailable", "bad");
+    if (i % 6 === 0) await sleep(delay);
+    delay = Math.max(1, delay * 0.94);
+  }
+
+  // Memory pressure / pid exhaustion
+  await sleep(220);
+  writeLine("", "");
+  const trace = [
+    "[ 9999.100001] cgroup: fork rejected by pids controller in /user.slice/user-1000.slice",
+    "[ 9999.110023] systemd[1]: Failed to fork off main thread: Resource temporarily unavailable",
+    "[ 9999.120045] systemd-journald[412]: Failed to fork: Resource temporarily unavailable",
+    "[ 9999.130067] sshd[624]: fatal: fork: Resource temporarily unavailable",
+    "[ 9999.140089] Out of memory: Killed process 921 (bash) total-vm:9876kB",
+    "[ 9999.150111] Out of memory: Killed process 920 (login) total-vm:6432kB",
+    "[ 9999.160133] Out of memory: Killed process 412 (systemd-journald)",
+    "[ 9999.170155] Out of memory: Killed process 1 (systemd) total-vm:172384kB",
+    "[ 9999.180177] Kernel panic - not syncing: Attempted to kill init! exitcode=0x0000000b",
+    "[ 9999.190199] CPU: 0 PID: 1 Comm: systemd Not tainted",
+    "[ 9999.200211] Call Trace:",
+    "[ 9999.200300]  <TASK>",
+    "[ 9999.200411]  dump_stack_lvl+0x47/0x60",
+    "[ 9999.200522]  panic+0x100/0x2c0",
+    "[ 9999.200633]  do_exit+0x900/0xa30",
+    "[ 9999.200744]  </TASK>",
+    "[ 9999.210255] ---[ end Kernel panic ]---"
+  ];
+  for (const t of trace) { writeLine(t, "bad"); await sleep(50); }
+
+  await sleep(400);
+  $("term").style.filter = "blur(1px) hue-rotate(40deg)";
+  await sleep(150);
+  $("term").style.filter = "";
+  $("destroyedSub").textContent = "// fork bomb: pids exhausted, init killed";
+  $("destroyedStack").textContent = trace.slice(-8).join("\n");
+  $("destroyed").classList.add("show");
+}
+
+/* ===================== DRIVE WIPE (dd) ===================== */
+async function triggerDriveWipe(target, source) {
+  if (state.destroyed) return;
+  state.destroyed = true;
+  $("cmd").disabled = true;
+
+  const devName = target.split("/").pop();
+  const totalKB = 20510332;
+  const stepKB  = Math.floor(totalKB / 12);
+  let writtenKB = 0;
+  const startedAt = Date.now();
+
+  writeLine("// wiping " + target + " with " + source + " ...", "warn");
+  await sleep(150);
+
+  while (writtenKB < totalKB) {
+    writtenKB = Math.min(totalKB, writtenKB + stepKB);
+    const mb = (writtenKB / 1024).toFixed(1);
+    const pct = ((writtenKB / totalKB) * 100).toFixed(1);
+    writeLine(mb + " MB written  [" + pct + "%]", "dim");
+    await sleep(130);
+  }
+
+  const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+  const recs = Math.floor(totalKB * 1024 / 512);
+  writeLine(recs + "+0 records in");
+  writeLine(recs + "+0 records out");
+  writeLine((totalKB * 1024) + " bytes (" + (totalKB/1024/1024).toFixed(2) + " GB, " + (totalKB/1024).toFixed(0) + " MiB) copied, " + elapsed + " s, 1.6 GB/s");
+
+  // Filesystem gone
+  await sleep(300);
+  state.fs = { "/": { type: "d", children: {} } };
+
+  writeLine("", "");
+  const errs = [
+    "[ 9999.000123] EXT4-fs error (device " + devName + "): ext4_lookup:1655: inode #2: comm bash: deleted inode referenced",
+    "[ 9999.000234] Buffer I/O error on dev " + devName + ", logical block 0, lost async page write",
+    "[ 9999.000345] Buffer I/O error on dev " + devName + ", logical block 1, lost async page write",
+    "[ 9999.000456] EXT4-fs (" + devName + "): unable to read superblock",
+    "[ 9999.000567] EXT4-fs (" + devName + "): VFS: Can't find ext4 filesystem",
+    "[ 9999.000678] systemd[1]: Failed to start File System Check on /dev/" + devName,
+    "[ 9999.000789] systemd[1]: Dependency failed for /sysroot.",
+    "[ 9999.000890] systemd[1]: Dependency failed for Initrd Root File System.",
+    "[ 9999.001001] Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)",
+    "[ 9999.001112] CPU: 0 PID: 1 Comm: systemd Not tainted",
+    "[ 9999.001223] ---[ end Kernel panic - not syncing: VFS: Unable to mount root fs ]---"
+  ];
+  for (const e of errs) { writeLine(e, "bad"); await sleep(55); }
+
+  await sleep(500);
+  $("term").style.filter = "contrast(1.6) hue-rotate(180deg)";
+  await sleep(120);
+  $("term").style.filter = "";
+  $("destroyedSub").textContent = "// drive wiped: " + target + " has no filesystem";
+  $("destroyedStack").textContent = errs.slice(-8).join("\n");
+  $("destroyed").classList.add("show");
+}
+
+/* ===================== DISK FILL (cat /dev/urandom) ===================== */
+async function triggerDiskFill(source, ofPath) {
+  if (state.destroyed) return;
+  $("cmd").disabled = true;
+
+  const randChar = () => {
+    const r = Math.random();
+    if (r < 0.4) return String.fromCharCode(0x20 + Math.floor(Math.random() * 90));
+    if (r < 0.7) return "▓▒░█▄▀■◆◇○●"[Math.floor(Math.random() * 11)];
+    return "@#$%^&*()_+-=[]{}|;:,./<>?"[Math.floor(Math.random() * 26)];
+  };
+  const zeroLine = () => "\\0".repeat(40);
+  const randLine = (len) => Array.from({length: len || 78}, randChar).join("");
+
+  if (ofPath) writeLine("// piping " + source + " -> " + ofPath, "dim");
+  else writeLine("// dumping " + source + " to stdout", "dim");
+  await sleep(120);
+
+  // 60 lines of "data"
+  for (let i = 0; i < 60; i++) {
+    writeLine(source === "/dev/zero" ? zeroLine() : randLine(), source === "/dev/zero" ? "dim" : null);
+    if (i % 4 === 0) await sleep(35);
+  }
+
+  // Begin failing — ENOSPC
+  await sleep(180);
+  writeLine("");
+  const enospc = [
+    "cat: write error: No space left on device",
+    "bash: cannot create temp file for here-document: No space left on device",
+    "systemd-journald[412]: Failed to write entry (23 items, 654 bytes), ignoring: No space left on device",
+    "touch: cannot touch '/var/lib/dpkg/lock-frontend': No space left on device",
+    "tar: /tmp/install.log: Cannot write: No space left on device",
+    "/usr/bin/apt: error while loading shared libraries: cannot create cache file: No space left on device",
+    "snapd[731]: cannot write snap manifest: No space left on device",
+    "sshd[624]: error: openpty: No space left on device"
+  ];
+  for (const e of enospc) { writeLine(e, "bad"); await sleep(110); }
+
+  await sleep(250);
+  state.destroyed = true;
+  writeLine("", "");
+  const kerr = [
+    "[ 9999.123001] EXT4-fs warning (device sda1): ext4_dx_add_entry:2461: Directory (ino: 131073) index full, reach max htree level: 2",
+    "[ 9999.123112] EXT4-fs: error: no space left on device",
+    "[ 9999.234223] systemd[1]: Failed to fork: Cannot allocate memory",
+    "[ 9999.234334] cgroup_oom: Memory cgroup out of memory: Killed process 624 (sshd)",
+    "[ 9999.234445] cgroup_oom: Memory cgroup out of memory: Killed process 412 (systemd-journald)",
+    "[ 9999.234556] cgroup_oom: Memory cgroup out of memory: Killed process 1 (systemd)",
+    "[ 9999.345667] Kernel panic - not syncing: System is deadlocked on memory",
+    "[ 9999.456778] ---[ end Kernel panic - not syncing: System is deadlocked on memory ]---"
+  ];
+  for (const e of kerr) { writeLine(e, "bad"); await sleep(70); }
+
+  await sleep(500);
+  $("term").style.filter = "saturate(0) brightness(0.7)";
+  await sleep(120);
+  $("term").style.filter = "";
+  $("destroyedSub").textContent = "// disk full: ENOSPC cascade · OOM killer ran out of victims";
+  $("destroyedStack").textContent = kerr.slice(-8).join("\n");
+  $("destroyed").classList.add("show");
+}
+
+/* ===================== DESTRUCTION ===================== */
+async function triggerDestruction() {
+  state.destroyed = true;
+  $("cmd").disabled = true;
+
+  // collect all paths
+  const removed = [];
+  function walk(node, path) {
+    if (node.type === "d") {
+      for (const name in node.children) walk(node.children[name], path + "/" + name);
+    }
+    removed.push(path || "/");
+  }
+  walk(state.fs["/"], "");
+
+  // emit removal lines in batches
+  let batch = 0;
+  for (const p of removed) {
+    writeLine("removed '" + p + "'", "bad");
+    batch++;
+    if (batch % 40 === 0) await sleep(15);
+  }
+
+  // wipe fs in memory
+  state.fs = { "/": { type: "d", children: {} } };
+  await sleep(200);
+
+  writeLine("", "");
+  const errs = [
+    "bash: /usr/bin/which: No such file or directory",
+    "bash: /etc/bash.bashrc: No such file or directory",
+    "bash: cannot find /bin/bash",
+    "systemd[1]: Failed to allocate manager object: Permission denied",
+    "systemd[1]: !!!!!! Failed to allocate manager object.",
+    "systemd[1]: Freezing execution.",
+    "[ 9999.000001] EXT4-fs error (device sda1): ext4_lookup:1655: inode #131073: comm bash: deleted inode referenced: 131139",
+    "[ 9999.000123] EXT4-fs (sda1): Remounting filesystem read-only",
+    "[ 9999.000456] systemd-journald[412]: Failed to write entry (23 items, 654 bytes), ignoring: Bad file descriptor",
+    "[ 9999.001234] init: PANIC: segfault at 0 ip 00007f000000 sp 00007f00ffff error 14",
+    "[ 9999.002345] Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000200",
+    "[ 9999.003456] CPU: 0 PID: 1 Comm: systemd Not tainted 6.5.0-kali3-amd64 #1",
+    "[ 9999.004567] Hardware name: innotek GmbH VirtualBox/VirtualBox",
+    "[ 9999.005678] Call Trace:",
+    "[ 9999.005900]  <TASK>",
+    "[ 9999.006012]  dump_stack_lvl+0x47/0x60",
+    "[ 9999.006234]  panic+0x100/0x2c0",
+    "[ 9999.006345]  do_exit+0x900/0xa30",
+    "[ 9999.006456]  do_group_exit+0x35/0x90",
+    "[ 9999.006567]  __x64_sys_exit_group+0x14/0x20",
+    "[ 9999.006678]  do_syscall_64+0x55/0xb0",
+    "[ 9999.006789]  entry_SYSCALL_64_after_hwframe+0x6c/0xd6",
+    "[ 9999.006900]  </TASK>",
+    "[ 9999.007123] Kernel Offset: 0x0 from 0xffffffff81000000",
+    "[ 9999.007234] ---[ end Kernel panic - not syncing: Attempted to kill init! ]---"
+  ];
+  for (const e of errs) {
+    writeLine(e, "bad");
+    await sleep(40);
+  }
+
+  await sleep(700);
+  // glitch the terminal
+  $("term").style.filter = "hue-rotate(20deg) contrast(1.4)";
+  await sleep(150);
+  $("term").style.filter = "invert(1)";
+  await sleep(100);
+  $("term").style.filter = "";
+
+  $("destroyedStack").textContent = errs.slice(-8).join("\n");
+  $("destroyed").classList.add("show");
+}
+
+/* ===================== INIT ===================== */
+window.addEventListener("DOMContentLoaded", () => {
+  $("cmd").focus();
+});
+</script>
+</body>
+</html>
